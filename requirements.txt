@@ -1,0 +1,35 @@
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# AI/ML
+openai==1.7.2
+langgraph==0.0.25
+langchain==0.1.0
+langchain-core==0.1.10
+
+# Data processing
+pandas==2.1.4
+numpy==1.26.3
+yfinance==0.2.35
+
+# HTTP requests
+requests==2.31.0
+httpx==0.26.0
+
+# Database
+sqlite3-python==1.0.0
+
+# Utilities
+python-dateutil==2.8.2
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development
+black==23.12.1
+flake8==7.0.0
+mypy==1.8.0

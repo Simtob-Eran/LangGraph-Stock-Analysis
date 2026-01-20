@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "yfinance": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-yahoo-finance"
+      ],
+      "description": "Yahoo Finance MCP Server - Free stock data"
+    }
+  }
+}
