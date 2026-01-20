@@ -31,9 +31,19 @@ This system demonstrates advanced multi-agent AI architecture where specialized 
 
 ## 📋 Requirements
 
-- Python 3.11 or higher
+- Python 3.11+ (supports 3.11, 3.12, 3.13)
 - OpenAI API key
 - Internet connection for Yahoo Finance data
+
+### 📦 Key Dependencies (2026 Latest Versions)
+
+- **LangGraph 0.2.45+** - Multi-agent orchestration framework
+- **OpenAI 1.57.0+** - GPT integration
+- **LangChain 0.3.13+** - LLM application framework
+- **NumPy 2.2.1+** - Numerical computing (NumPy 2.x series)
+- **Pandas 2.2.3+** - Data analysis
+- **yfinance 0.2.50+** - Yahoo Finance data
+- **Pydantic 2.10.3+** - Data validation
 
 ## 🚀 Quick Start
 
