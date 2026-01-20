@@ -105,28 +105,41 @@ class DataCollectorAgent(BaseAgent):
             "description": info.get("description")
         }
 
-        # Structure price data
+        # Structure price data - convert Timestamp keys to strings for JSON serialization
+        historical_data_raw = historical.get("historical_data", {})
+        historical_data_clean = {}
+
+        if historical_data_raw:
+            for date_key, values in historical_data_raw.items():
+                # Convert pandas Timestamp to string
+                date_str = str(date_key) if not isinstance(date_key, str) else date_key
+                historical_data_clean[date_str] = values
+
         price_data = {
             "current_price": historical.get("current_price", 0),
             "52_week_high": historical.get("52_week_high"),
             "52_week_low": historical.get("52_week_low"),
-            "historical_data": historical.get("historical_data", {})
+            "historical_data": historical_data_clean
         }
 
-        # Structure financials
+        # Structure financials - convert Timestamp keys to strings
         financials = {
-            "income_statement": income_stmt,
-            "balance_sheet": balance_sheet,
-            "cash_flow": cash_flow
+            "income_statement": self._clean_timestamps(income_stmt),
+            "balance_sheet": self._clean_timestamps(balance_sheet),
+            "cash_flow": self._clean_timestamps(cash_flow)
         }
 
-        # Structure news
+        # Structure news - convert timestamps to strings
         news_articles = []
         for article in news:
+            published = article.get("published")
+            if published and not isinstance(published, str):
+                published = str(published)
+
             news_articles.append({
                 "headline": article.get("headline", ""),
                 "source": article.get("source"),
-                "published": article.get("published"),
+                "published": published,
                 "url": article.get("url"),
                 "summary": article.get("summary")
             })
@@ -139,3 +152,24 @@ class DataCollectorAgent(BaseAgent):
             "financials": financials,
             "news": news_articles
         }
+
+    def _clean_timestamps(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert pandas Timestamp keys to strings for JSON serialization.
+
+        Args:
+            data: Dictionary potentially containing Timestamp keys
+
+        Returns:
+            Dictionary with string keys
+        """
+        if not data or not isinstance(data, dict):
+            return data
+
+        cleaned = {}
+        for key, value in data.items():
+            # Convert key to string if it's a Timestamp
+            str_key = str(key) if not isinstance(key, str) else key
+            cleaned[str_key] = value
+
+        return cleaned

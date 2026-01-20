@@ -106,8 +106,9 @@ class FeedbackLoopAgent(BaseAgent):
         missing = []
 
         # Check collected data
-        if not data or "error" in data:
+        if not data or data is None or "error" in str(data):
             missing.append("Basic stock data unavailable")
+            return missing  # Return early if no data at all
 
         price_data = data.get("price_data", {})
         if not price_data.get("historical_data"):
