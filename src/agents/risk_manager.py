@@ -31,12 +31,31 @@ class RiskManagerAgent(BaseAgent):
             Risk assessment results
         """
         ticker = inputs.get("ticker", "").upper()
-        collected_data = inputs.get("collected_data", {})
+        collected_data = inputs.get("collected_data")
         fundamental = inputs.get("fundamental", {})
         technical = inputs.get("technical", {})
         sentiment = inputs.get("sentiment", {})
 
         self.logger.info(f"Performing risk assessment for {ticker}")
+
+        # Handle missing collected_data
+        if not collected_data or collected_data is None:
+            self.logger.warning(f"No collected data available for {ticker}, using limited analysis")
+            return {
+                "ticker": ticker,
+                "risk_score": 7.0,
+                "risk_level": "high",
+                "risk_factors": [{
+                    "type": "Data Unavailability",
+                    "level": "high",
+                    "description": "Unable to assess risk due to missing data",
+                    "mitigation": "Obtain complete data before investing"
+                }],
+                "volatility_metrics": {"error": "No data available"},
+                "warnings": ["Risk assessment incomplete due to missing data"],
+                "max_position_size": "Avoid until complete data available",
+                "reasoning": "Cannot perform comprehensive risk assessment without market data"
+            }
 
         # Calculate volatility metrics
         volatility_metrics = self._calculate_volatility_metrics(collected_data)
@@ -91,7 +110,13 @@ class RiskManagerAgent(BaseAgent):
         metrics = {}
 
         try:
+            if not data or data is None:
+                return {"error": "No data available"}
+
             price_data = data.get("price_data", {})
+            if not price_data:
+                return {"error": "No price data available"}
+
             historical = price_data.get("historical_data", {})
 
             if not historical:
@@ -155,6 +180,16 @@ class RiskManagerAgent(BaseAgent):
             List of risk factors
         """
         risk_factors = []
+
+        # Handle missing data
+        if not data or data is None:
+            risk_factors.append({
+                "type": "Data Unavailability",
+                "level": "high",
+                "description": "Unable to assess full risk profile due to missing market data",
+                "mitigation": "Obtain complete data before making investment decisions"
+            })
+            return risk_factors
 
         # Volatility risk
         std_dev = volatility.get("std_dev", 0)
