@@ -110,8 +110,8 @@ class TechnicalAnalystAgent(BaseAgent):
                 self.logger.warning("Missing required columns in historical data")
                 return None
 
-            # Sort by date
-            df.index = pd.to_datetime(df.index)
+            # Sort by date - use utc=True to handle mixed timezones
+            df.index = pd.to_datetime(df.index, utc=True)
             df = df.sort_index()
 
             # Clean data
