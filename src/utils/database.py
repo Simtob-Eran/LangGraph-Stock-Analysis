@@ -202,7 +202,7 @@ class Database:
                 agent_name,
                 ticker,
                 datetime.now(),
-                json.dumps(input_data),
+                json.dumps(input_data, default=str),
                 json.dumps(output_data, default=str),
                 reasoning,
                 confidence,
