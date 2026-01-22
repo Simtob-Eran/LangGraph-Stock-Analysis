@@ -77,7 +77,9 @@ class FundamentalAnalysis(BaseModel):
     recommendation: str
     confidence: float = Field(ge=0, le=1)
 
-llm = ChatOpenAI(model="gpt-4o")
+from config.settings import settings
+
+llm = ChatOpenAI(model=settings.OPENAI_MODEL)
 structured_llm = llm.with_structured_output(FundamentalAnalysis)
 ```
 

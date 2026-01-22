@@ -59,7 +59,9 @@ class FundamentalAnalysisOutput(BaseModel):
     confidence: float
 
 # Create chain with structured output
-llm = ChatOpenAI(model="gpt-4o")
+from config.settings import settings
+
+llm = ChatOpenAI(model=settings.OPENAI_MODEL)
 prompt = ChatPromptTemplate.from_messages([...])
 chain = prompt | llm.with_structured_output(FundamentalAnalysisOutput)
 
@@ -155,10 +157,11 @@ class FinancialMetricsCalculator:
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from config.settings import settings
 
 # Initialize LLM
 llm = ChatOpenAI(
-    model="gpt-4o",
+    model=settings.OPENAI_MODEL,
     temperature=0.7
 )
 
