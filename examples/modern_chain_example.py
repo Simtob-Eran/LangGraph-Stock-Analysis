@@ -142,10 +142,12 @@ def create_fundamental_analyst_chain():
     This replaces the old custom BaseAgent implementation.
     Uses LCEL (LangChain Expression Language) for composition.
     """
+    from config.settings import settings
 
     # Initialize LLM with structured output support
+    # Model comes from environment configuration
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=settings.OPENAI_MODEL,
         temperature=0.7
     )
 
