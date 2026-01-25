@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 import yfinance as yf
 from datetime import datetime
+import aiohttp
 from src.utils.logger import setup_logger
 
 logger = setup_logger("mcp.yfinance")
@@ -29,8 +30,10 @@ class MCPServerConfig:
 
     def __init__(self, name: str, config: Dict[str, Any]):
         self.name = name
+        self.type = config.get("type", "command")  # 'command' or 'http'
         self.command = config.get("command")
         self.args = config.get("args", [])
+        self.url = config.get("url")  # For HTTP-based servers
         self.description = config.get("description", "")
         self.priority = config.get("priority", 99)
         self.enabled = config.get("enabled", True)
@@ -53,6 +56,23 @@ class YahooFinanceMCPClient:
         self.mcp_servers = self._initialize_mcp_servers()
         self.fallback_enabled = self.mcp_config.get("fallbackStrategy", {}).get("enabled", True)
         self.max_retries = self.mcp_config.get("fallbackStrategy", {}).get("maxRetries", 3)
+
+        print(f"\n{'='*60}")
+        print(f"🚀 MCP CLIENT INITIALIZED")
+        print(f"{'='*60}")
+        print(f"Total MCP servers: {len(self.mcp_servers)}")
+        print(f"Fallback enabled: {self.fallback_enabled}")
+        print(f"\nConfigured MCP Servers:")
+        for server in self.mcp_servers:
+            print(f"  Priority {server.priority}: {server.name}")
+            print(f"    Type: {server.type}")
+            if server.type == "http":
+                print(f"    URL: {server.url}")
+            else:
+                print(f"    Command: {server.command} {' '.join(server.args)}")
+            print(f"    Description: {server.description}")
+            print()
+        print(f"{'='*60}\n")
 
         self.logger.info(f"Initialized MCP client with {len(self.mcp_servers)} servers")
         for server in self.mcp_servers:
@@ -98,17 +118,68 @@ class YahooFinanceMCPClient:
             Tuple of (success, data)
         """
         try:
-            self.logger.debug(f"Trying MCP server: {server.name} for {method}")
+            print(f"\n{'='*60}")
+            print(f"🔌 ATTEMPTING MCP CONNECTION")
+            print(f"{'='*60}")
+            print(f"Server: {server.name}")
+            print(f"Type: {server.type}")
+            print(f"Method: {method}")
+            print(f"Params: {params}")
 
-            # Note: Actual MCP protocol implementation would go here
-            # For now, we'll simulate MCP calls and fallback to yfinance
-            # In production, you'd use the MCP protocol to communicate with npx servers
+            if server.type == "http" and server.url:
+                print(f"URL: {server.url}")
+                print(f"Making HTTP request to MCP server...")
 
-            # TODO: Implement actual MCP protocol calls
-            # For now, return None to trigger fallback
+                # Make HTTP request to MCP server
+                async with aiohttp.ClientSession() as session:
+                    # Prepare MCP request payload
+                    mcp_payload = {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": method,
+                        "params": params
+                    }
+
+                    print(f"Payload: {json.dumps(mcp_payload, indent=2)}")
+
+                    async with session.post(
+                        server.url,
+                        json=mcp_payload,
+                        timeout=aiohttp.ClientTimeout(total=10)
+                    ) as response:
+                        print(f"Response Status: {response.status}")
+
+                        if response.status == 200:
+                            data = await response.json()
+                            print(f"✅ MCP SUCCESS!")
+                            print(f"Response: {json.dumps(data, indent=2)[:500]}...")
+                            print(f"{'='*60}\n")
+
+                            # Extract result from JSON-RPC response
+                            if "result" in data:
+                                return True, data["result"]
+                            return True, data
+                        else:
+                            error_text = await response.text()
+                            print(f"❌ MCP FAILED: HTTP {response.status}")
+                            print(f"Error: {error_text[:200]}")
+                            print(f"{'='*60}\n")
+                            return False, None
+            else:
+                # Command-based MCP server (legacy support)
+                print(f"Command: {server.command} {' '.join(server.args)}")
+                print(f"⚠️ Command-based MCP not implemented yet")
+                print(f"{'='*60}\n")
+                return False, None
+
+        except aiohttp.ClientError as e:
+            print(f"❌ MCP CONNECTION ERROR: {e}")
+            print(f"{'='*60}\n")
+            self.logger.debug(f"MCP server {server.name} connection failed: {e}")
             return False, None
-
         except Exception as e:
+            print(f"❌ MCP ERROR: {e}")
+            print(f"{'='*60}\n")
             self.logger.debug(f"MCP server {server.name} failed: {e}")
             return False, None
 
@@ -136,12 +207,19 @@ class YahooFinanceMCPClient:
 
             if success and data:
                 self.logger.info(f"✓ MCP SUCCESS: {server.name} returned data for {method}")
+                print(f"\n✅ Using MCP data from: {server.name}\n")
                 return data
 
             self.logger.debug(f"✗ MCP server {server.name} unavailable, trying next...")
 
         # All MCP servers failed, use fallback
         if self.fallback_enabled:
+            print(f"\n{'='*60}")
+            print(f"⚠️ ALL MCP SERVERS FAILED - USING FALLBACK")
+            print(f"{'='*60}")
+            print(f"Method: {method}")
+            print(f"Falling back to: Direct yfinance library")
+            print(f"{'='*60}\n")
             self.logger.info(f"All MCP servers failed, using direct yfinance fallback for {method}")
             return await fallback_func(**params)
         else:
