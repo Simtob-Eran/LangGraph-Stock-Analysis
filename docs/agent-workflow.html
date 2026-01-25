@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph Stock Analysis - Agent Workflow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .workflow {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .agent-box {
+            padding: 20px 40px;
+            border-radius: 15px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.1em;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+            min-width: 280px;
+        }
+        .agent-box:hover {
+            transform: scale(1.05);
+        }
+        .orchestrator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-size: 1.3em;
+            padding: 25px 50px;
+            margin-bottom: 20px;
+        }
+        .data-collector {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: #1a1a2e;
+        }
+        .parallel-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .parallel-box {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: #1a1a2e;
+            min-width: 200px;
+        }
+        .debate {
+            background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+            color: #1a1a2e;
+        }
+        .risk {
+            background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%);
+            color: #1a1a2e;
+        }
+        .synthesis {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: #1a1a2e;
+        }
+        .feedback {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+        .output {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+            color: #1a1a2e;
+            font-size: 1.2em;
+        }
+        .arrow {
+            font-size: 2em;
+            color: #667eea;
+            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+        }
+        .parallel-label {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #feca57;
+        }
+        .step-number {
+            display: inline-block;
+            background: rgba(0,0,0,0.3);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 LangGraph Stock Analysis<br>Agent Workflow</h1>
+
+    <div class="workflow">
+        <div class="agent-box orchestrator">
+            🎯 Orchestrator
+            <div style="font-size: 0.7em; font-weight: normal; margin-top: 5px;">Manages entire workflow</div>
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="agent-box data-collector">
+            <span class="step-number">1</span>
+            📊 Data Collector
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="parallel-label">⚡ PARALLEL EXECUTION</div>
+        <div class="parallel-container">
+            <div class="agent-box parallel-box">
+                <span class="step-number">2</span>
+                📈 Fundamental Analyst
+            </div>
+            <div class="agent-box parallel-box">
+                <span class="step-number">3</span>
+                📉 Technical Analyst
+            </div>
+            <div class="agent-box parallel-box">
+                <span class="step-number">4</span>
+                💬 Sentiment Analyst
+            </div>
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="agent-box debate">
+            <span class="step-number">5</span>
+            ⚖️ Debate Agent
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="agent-box risk">
+            <span class="step-number">6</span>
+            🛡️ Risk Manager
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="agent-box synthesis">
+            <span class="step-number">7</span>
+            📝 Synthesis Agent
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="agent-box feedback">
+            <span class="step-number">8</span>
+            🔄 Feedback Loop
+        </div>
+
+        <div class="arrow">↓</div>
+
+        <div class="agent-box output">
+            📄 Final Report
+            <div style="font-size: 0.7em; font-weight: normal; margin-top: 5px;">Markdown + JSON</div>
+        </div>
+    </div>
+</body>
+</html>
