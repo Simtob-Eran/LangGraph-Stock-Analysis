@@ -130,6 +130,12 @@ class YahooFinanceMCPClient:
                 print(f"URL: {server.url}")
                 print(f"Making HTTP request to MCP server...")
 
+                # Prepare headers required by MCP server
+                headers = {
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json"
+                }
+
                 # Make HTTP request to MCP server
                 async with aiohttp.ClientSession() as session:
                     # Prepare MCP request payload
@@ -141,10 +147,12 @@ class YahooFinanceMCPClient:
                     }
 
                     print(f"Payload: {json.dumps(mcp_payload, indent=2)}")
+                    print(f"Headers: {headers}")
 
                     async with session.post(
                         server.url,
                         json=mcp_payload,
+                        headers=headers,
                         timeout=aiohttp.ClientTimeout(total=10)
                     ) as response:
                         print(f"Response Status: {response.status}")
