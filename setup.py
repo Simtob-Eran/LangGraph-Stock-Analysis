@@ -34,6 +34,7 @@ setup(
         "yfinance>=0.2.50,<0.3.0",
         "requests>=2.32.3,<3.0.0",
         "httpx>=0.28.1,<0.29.0",
+        "aiohttp>=3.11.11,<4.0.0",
         "python-dateutil>=2.9.0,<3.0.0",
     ],
     extras_require={

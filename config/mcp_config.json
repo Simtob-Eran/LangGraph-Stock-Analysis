@@ -1,53 +1,10 @@
 {
   "mcpServers": {
-    "yfinance-primary": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-yahoo-finance"
-      ],
-      "description": "Primary Yahoo Finance MCP Server - Official ModelContext Protocol",
+    "alpaca-local": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp-connect/default-alpaca-mcp-local-778d19fb962xz",
+      "description": "Local Alpaca MCP Server - HTTP endpoint",
       "priority": 1,
-      "enabled": true
-    },
-    "yfinance-agentx": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@agentx-ai/mcp-server-yahoo-finance"
-      ],
-      "description": "AgentX-ai Yahoo Finance Server - Alternative implementation",
-      "priority": 2,
-      "enabled": true
-    },
-    "yfinance-alex": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@alex2yang97/mcp-yahoo-finance"
-      ],
-      "description": "Alex2Yang97 Yahoo Finance MCP - Community server",
-      "priority": 3,
-      "enabled": true
-    },
-    "yfinance-leon": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@leoncuhk/mcp-yahoo-finance"
-      ],
-      "description": "leoncuhk MCP Yahoo Finance - Extended features",
-      "priority": 4,
-      "enabled": true
-    },
-    "yfinance-zentickr": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@zentickr/yahoo-query-mcp"
-      ],
-      "description": "Zentickr Yahoo-query MCP - Query-focused implementation",
-      "priority": 5,
       "enabled": true
     }
   },
