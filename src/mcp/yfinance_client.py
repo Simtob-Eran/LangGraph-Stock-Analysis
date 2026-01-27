@@ -246,7 +246,7 @@ class YahooFinanceMCPClient:
             Dictionary containing ticker info
         """
 
-        async def fallback():
+        async def fallback(**kwargs):
             """Direct yfinance fallback."""
             try:
                 ticker = yf.Ticker(symbol)
@@ -303,7 +303,7 @@ class YahooFinanceMCPClient:
             Dictionary containing historical data
         """
 
-        async def fallback():
+        async def fallback(**kwargs):
             """Direct yfinance fallback."""
             try:
                 ticker = yf.Ticker(symbol)
@@ -359,7 +359,7 @@ class YahooFinanceMCPClient:
             List of news articles
         """
 
-        async def fallback():
+        async def fallback(**kwargs):
             """Direct yfinance fallback."""
             try:
                 ticker = yf.Ticker(symbol)
@@ -405,7 +405,7 @@ class YahooFinanceMCPClient:
             Balance sheet data
         """
 
-        async def fallback():
+        async def fallback(**kwargs):
             """Direct yfinance fallback."""
             try:
                 ticker = yf.Ticker(symbol)
@@ -448,7 +448,7 @@ class YahooFinanceMCPClient:
             Income statement data
         """
 
-        async def fallback():
+        async def fallback(**kwargs):
             """Direct yfinance fallback."""
             try:
                 ticker = yf.Ticker(symbol)
@@ -491,7 +491,7 @@ class YahooFinanceMCPClient:
             Cash flow data
         """
 
-        async def fallback():
+        async def fallback(**kwargs):
             """Direct yfinance fallback."""
             try:
                 ticker = yf.Ticker(symbol)
