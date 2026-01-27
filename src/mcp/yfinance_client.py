@@ -1,82 +1,74 @@
 """
 Enhanced MCP client for Yahoo Finance data integration.
 
-This client prioritizes using free MCP servers with automatic fallback
-to direct yfinance library if MCP servers fail.
+This client uses the official MCP library with proper session handling.
+It prioritizes MCP servers with automatic fallback to direct yfinance.
 
 MCP Priority Strategy:
-1. Try primary MCP server (@modelcontextprotocol/server-yahoo-finance)
-2. Try alternative MCP servers (AgentX-ai, Alex2Yang97, leoncuhk, Zentickr)
-3. Fallback to direct yfinance library
-
-This ensures maximum reliability while preferring MCP when available.
+1. Try MCP server with proper session (streamablehttp_client)
+2. Fallback to direct yfinance library if MCP fails
 """
 
 import json
 import asyncio
-import subprocess
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from pathlib import Path
+from contextlib import asynccontextmanager
 import yfinance as yf
 from datetime import datetime
-import aiohttp
 from src.utils.logger import setup_logger
+
+# MCP imports
+try:
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    print("⚠️ MCP library not installed. Using direct yfinance only.")
 
 logger = setup_logger("mcp.yfinance")
 
 
-class MCPServerConfig:
-    """Configuration for a single MCP server."""
-
-    def __init__(self, name: str, config: Dict[str, Any]):
-        self.name = name
-        self.type = config.get("type", "command")  # 'command' or 'http'
-        self.command = config.get("command")
-        self.args = config.get("args", [])
-        self.url = config.get("url")  # For HTTP-based servers
-        self.description = config.get("description", "")
-        self.priority = config.get("priority", 99)
-        self.enabled = config.get("enabled", True)
-
-
 class YahooFinanceMCPClient:
     """
-    Enhanced Yahoo Finance client with MCP priority and fallback.
+    Yahoo Finance client with MCP priority and fallback.
 
-    Strategy:
-    1. Try MCP servers in priority order
-    2. If all MCP servers fail, use direct yfinance library
-    3. Cache results to reduce API calls
+    Uses proper MCP session handling with streamablehttp_client.
+    Falls back to direct yfinance if MCP is unavailable.
     """
 
     def __init__(self):
-        """Initialize Yahoo Finance MCP client with multiple server support."""
+        """Initialize Yahoo Finance MCP client."""
         self.logger = logger
         self.mcp_config = self._load_mcp_config()
-        self.mcp_servers = self._initialize_mcp_servers()
         self.fallback_enabled = self.mcp_config.get("fallbackStrategy", {}).get("enabled", True)
-        self.max_retries = self.mcp_config.get("fallbackStrategy", {}).get("maxRetries", 3)
+        self._session = None
+        self._tools = None
+        self._tools_map = {}
+
+        # Get MCP server config
+        servers = self.mcp_config.get("mcpServers", {})
+        self.mcp_url = None
+        self.mcp_headers = {}
+
+        for name, config in servers.items():
+            if config.get("enabled", True):
+                self.mcp_url = config.get("url")
+                self.mcp_headers = config.get("headers", {})
+                self.mcp_name = name
+                break
 
         print(f"\n{'='*60}")
         print(f"🚀 MCP CLIENT INITIALIZED")
         print(f"{'='*60}")
-        print(f"Total MCP servers: {len(self.mcp_servers)}")
+        print(f"MCP Available: {MCP_AVAILABLE}")
+        print(f"MCP URL: {self.mcp_url}")
+        print(f"Headers: {self.mcp_headers}")
         print(f"Fallback enabled: {self.fallback_enabled}")
-        print(f"\nConfigured MCP Servers:")
-        for server in self.mcp_servers:
-            print(f"  Priority {server.priority}: {server.name}")
-            print(f"    Type: {server.type}")
-            if server.type == "http":
-                print(f"    URL: {server.url}")
-            else:
-                print(f"    Command: {server.command} {' '.join(server.args)}")
-            print(f"    Description: {server.description}")
-            print()
         print(f"{'='*60}\n")
 
-        self.logger.info(f"Initialized MCP client with {len(self.mcp_servers)} servers")
-        for server in self.mcp_servers:
-            self.logger.info(f"  [{server.priority}] {server.name}: {server.description}")
+        self.logger.info(f"Initialized MCP client - URL: {self.mcp_url}")
 
     def _load_mcp_config(self) -> Dict[str, Any]:
         """Load MCP configuration from config file."""
@@ -88,166 +80,109 @@ class YahooFinanceMCPClient:
             self.logger.warning(f"Failed to load MCP config: {e}, using defaults")
             return {"mcpServers": {}, "fallbackStrategy": {"enabled": True}}
 
-    def _initialize_mcp_servers(self) -> List[MCPServerConfig]:
-        """Initialize and sort MCP servers by priority."""
-        servers = []
-        for name, config in self.mcp_config.get("mcpServers", {}).items():
-            server = MCPServerConfig(name, config)
-            if server.enabled:
-                servers.append(server)
+    @asynccontextmanager
+    async def _get_mcp_session(self):
+        """Create and manage MCP session with proper streaming."""
+        if not MCP_AVAILABLE or not self.mcp_url:
+            yield None
+            return
 
-        # Sort by priority (lower number = higher priority)
-        servers.sort(key=lambda x: x.priority)
-        return servers
-
-    async def _try_mcp_server(
-        self,
-        server: MCPServerConfig,
-        method: str,
-        params: Dict[str, Any]
-    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
-        """
-        Try to fetch data from a specific MCP server.
-
-        Args:
-            server: MCP server configuration
-            method: MCP method to call (e.g., "get_ticker_info")
-            params: Parameters for the method
-
-        Returns:
-            Tuple of (success, data)
-        """
         try:
             print(f"\n{'='*60}")
-            print(f"🔌 ATTEMPTING MCP CONNECTION")
+            print(f"🔌 CONNECTING TO MCP SERVER")
             print(f"{'='*60}")
-            print(f"Server: {server.name}")
-            print(f"Type: {server.type}")
-            print(f"Method: {method}")
-            print(f"Params: {params}")
+            print(f"URL: {self.mcp_url}")
+            print(f"Headers: {self.mcp_headers}")
 
-            if server.type == "http" and server.url:
-                print(f"URL: {server.url}")
-                print(f"Making HTTP request to MCP server...")
+            async with streamablehttp_client(
+                self.mcp_url,
+                headers=self.mcp_headers
+            ) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    print("🔄 Initializing session...")
+                    await session.initialize()
+                    print("✅ Session initialized!")
 
-                # Prepare headers required by MCP server
-                headers = {
-                    "Accept": "application/json, text/event-stream",
-                    "Content-Type": "application/json"
-                }
+                    # List available tools
+                    tools_result = await session.list_tools()
+                    tools = tools_result.tools if hasattr(tools_result, 'tools') else []
 
-                # Make HTTP request to MCP server
-                async with aiohttp.ClientSession() as session:
-                    # Prepare MCP request payload
-                    mcp_payload = {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": method,
-                        "params": params
-                    }
+                    print(f"📦 Available tools: {len(tools)}")
+                    for tool in tools:
+                        tool_name = tool.name if hasattr(tool, 'name') else str(tool)
+                        print(f"  • {tool_name}")
+                        self._tools_map[tool_name] = tool
 
-                    print(f"Payload: {json.dumps(mcp_payload, indent=2)}")
-                    print(f"Headers: {headers}")
+                    print(f"{'='*60}\n")
 
-                    async with session.post(
-                        server.url,
-                        json=mcp_payload,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=10)
-                    ) as response:
-                        print(f"Response Status: {response.status}")
+                    yield session
 
-                        if response.status == 200:
-                            data = await response.json()
-                            print(f"✅ MCP SUCCESS!")
-                            print(f"Response: {json.dumps(data, indent=2)[:500]}...")
-                            print(f"{'='*60}\n")
-
-                            # Extract result from JSON-RPC response
-                            if "result" in data:
-                                return True, data["result"]
-                            return True, data
-                        else:
-                            error_text = await response.text()
-                            print(f"❌ MCP FAILED: HTTP {response.status}")
-                            print(f"Error: {error_text[:200]}")
-                            print(f"{'='*60}\n")
-                            return False, None
-            else:
-                # Command-based MCP server (legacy support)
-                print(f"Command: {server.command} {' '.join(server.args)}")
-                print(f"⚠️ Command-based MCP not implemented yet")
-                print(f"{'='*60}\n")
-                return False, None
-
-        except aiohttp.ClientError as e:
-            print(f"❌ MCP CONNECTION ERROR: {e}")
-            print(f"{'='*60}\n")
-            self.logger.debug(f"MCP server {server.name} connection failed: {e}")
-            return False, None
         except Exception as e:
-            print(f"❌ MCP ERROR: {e}")
+            print(f"❌ MCP Connection Error: {e}")
             print(f"{'='*60}\n")
-            self.logger.debug(f"MCP server {server.name} failed: {e}")
-            return False, None
+            self.logger.error(f"MCP session error: {e}")
+            yield None
 
-    async def _fetch_with_mcp_priority(
+    async def _call_mcp_tool(self, session: ClientSession, tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Call an MCP tool and return the result."""
+        try:
+            print(f"🔧 Calling tool: {tool_name}")
+            print(f"   Arguments: {arguments}")
+
+            result = await session.call_tool(tool_name, arguments)
+
+            # Parse the result
+            if hasattr(result, 'content') and result.content:
+                content = result.content[0]
+                if hasattr(content, 'text'):
+                    data = json.loads(content.text)
+                    print(f"✅ Tool returned data")
+                    return data
+                elif hasattr(content, 'data'):
+                    return content.data
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"MCP tool call failed: {e}")
+            print(f"❌ Tool call failed: {e}")
+            return None
+
+    async def _fetch_with_fallback(
         self,
-        method: str,
-        params: Dict[str, Any],
+        tool_name: str,
+        arguments: Dict[str, Any],
         fallback_func
     ) -> Dict[str, Any]:
-        """
-        Fetch data with MCP priority and automatic fallback.
+        """Fetch data via MCP with fallback to direct yfinance."""
 
-        Args:
-            method: MCP method name
-            params: Method parameters
-            fallback_func: Fallback function to use if MCP fails
+        # Try MCP first
+        if MCP_AVAILABLE and self.mcp_url:
+            try:
+                async with self._get_mcp_session() as session:
+                    if session:
+                        result = await self._call_mcp_tool(session, tool_name, arguments)
+                        if result:
+                            if isinstance(result, dict):
+                                result["source"] = "mcp"
+                            return result
+            except Exception as e:
+                self.logger.error(f"MCP failed: {e}")
 
-        Returns:
-            Data dictionary
-        """
-        # Try each MCP server in priority order
-        for server in self.mcp_servers:
-            self.logger.debug(f"Attempting {method} via MCP: {server.name}")
-            success, data = await self._try_mcp_server(server, method, params)
-
-            if success and data:
-                self.logger.info(f"✓ MCP SUCCESS: {server.name} returned data for {method}")
-                print(f"\n✅ Using MCP data from: {server.name}\n")
-                return data
-
-            self.logger.debug(f"✗ MCP server {server.name} unavailable, trying next...")
-
-        # All MCP servers failed, use fallback
+        # Fallback to direct yfinance
         if self.fallback_enabled:
             print(f"\n{'='*60}")
-            print(f"⚠️ ALL MCP SERVERS FAILED - USING FALLBACK")
-            print(f"{'='*60}")
-            print(f"Method: {method}")
-            print(f"Falling back to: Direct yfinance library")
+            print(f"⚠️ MCP UNAVAILABLE - USING DIRECT YFINANCE")
             print(f"{'='*60}\n")
-            self.logger.info(f"All MCP servers failed, using direct yfinance fallback for {method}")
-            return await fallback_func(**params)
+            self.logger.info(f"Using direct yfinance fallback for {tool_name}")
+            return await fallback_func()
         else:
-            raise Exception("All MCP servers failed and fallback is disabled")
+            raise Exception("MCP failed and fallback is disabled")
 
     async def get_ticker_info(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get basic ticker information.
+        """Get basic ticker information."""
 
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-
-        Returns:
-            Dictionary containing ticker info
-        """
-
-        async def fallback(**kwargs):
-            """Direct yfinance fallback."""
+        async def fallback():
             try:
                 ticker = yf.Ticker(symbol)
                 info = ticker.info
@@ -277,7 +212,7 @@ class YahooFinanceMCPClient:
                     "source": "error"
                 }
 
-        return await self._fetch_with_mcp_priority(
+        return await self._fetch_with_fallback(
             "get_ticker_info",
             {"symbol": symbol},
             fallback
@@ -289,22 +224,9 @@ class YahooFinanceMCPClient:
         period: str = "2y",
         interval: str = "1d"
     ) -> Dict[str, Any]:
-        """
-        Get historical price data.
+        """Get historical price data."""
 
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-            period: Data period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
-            interval: Data interval (1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 1d, 5d, 1wk, 1mo, 3mo)
-
-        Returns:
-            Dictionary containing historical data
-        """
-
-        async def fallback(**kwargs):
-            """Direct yfinance fallback."""
+        async def fallback():
             try:
                 ticker = yf.Ticker(symbol)
                 hist = ticker.history(period=period, interval=interval)
@@ -339,28 +261,16 @@ class YahooFinanceMCPClient:
                     "source": "error"
                 }
 
-        return await self._fetch_with_mcp_priority(
+        return await self._fetch_with_fallback(
             "get_ticker_historical",
             {"symbol": symbol, "period": period, "interval": interval},
             fallback
         )
 
     async def get_ticker_news(self, symbol: str, count: int = 10) -> List[Dict[str, Any]]:
-        """
-        Get recent news for a ticker.
+        """Get recent news for a ticker."""
 
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-            count: Number of news items to retrieve
-
-        Returns:
-            List of news articles
-        """
-
-        async def fallback(**kwargs):
-            """Direct yfinance fallback."""
+        async def fallback():
             try:
                 ticker = yf.Ticker(symbol)
                 news = ticker.news
@@ -381,32 +291,20 @@ class YahooFinanceMCPClient:
                 self.logger.error(f"Direct yfinance news fallback failed: {e}")
                 return []
 
-        result = await self._fetch_with_mcp_priority(
+        result = await self._fetch_with_fallback(
             "get_ticker_news",
             {"symbol": symbol, "count": count},
             fallback
         )
 
-        # Handle case where MCP returns dict instead of list
         if isinstance(result, dict):
             return result.get("articles", [])
-        return result
+        return result if isinstance(result, list) else []
 
     async def get_balance_sheet(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get balance sheet data.
+        """Get balance sheet data."""
 
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-
-        Returns:
-            Balance sheet data
-        """
-
-        async def fallback(**kwargs):
-            """Direct yfinance fallback."""
+        async def fallback():
             try:
                 ticker = yf.Ticker(symbol)
                 balance_sheet = ticker.balance_sheet
@@ -429,27 +327,16 @@ class YahooFinanceMCPClient:
                 self.logger.error(f"Direct yfinance balance sheet fallback failed: {e}")
                 return {"symbol": symbol, "data": {}, "error": str(e), "source": "error"}
 
-        return await self._fetch_with_mcp_priority(
+        return await self._fetch_with_fallback(
             "get_balance_sheet",
             {"symbol": symbol},
             fallback
         )
 
     async def get_income_statement(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get income statement data.
+        """Get income statement data."""
 
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-
-        Returns:
-            Income statement data
-        """
-
-        async def fallback(**kwargs):
-            """Direct yfinance fallback."""
+        async def fallback():
             try:
                 ticker = yf.Ticker(symbol)
                 income_stmt = ticker.income_stmt
@@ -472,27 +359,16 @@ class YahooFinanceMCPClient:
                 self.logger.error(f"Direct yfinance income statement fallback failed: {e}")
                 return {"symbol": symbol, "data": {}, "error": str(e), "source": "error"}
 
-        return await self._fetch_with_mcp_priority(
+        return await self._fetch_with_fallback(
             "get_income_statement",
             {"symbol": symbol},
             fallback
         )
 
     async def get_cash_flow(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get cash flow statement data.
+        """Get cash flow statement data."""
 
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-
-        Returns:
-            Cash flow data
-        """
-
-        async def fallback(**kwargs):
-            """Direct yfinance fallback."""
+        async def fallback():
             try:
                 ticker = yf.Ticker(symbol)
                 cash_flow = ticker.cash_flow
@@ -515,26 +391,16 @@ class YahooFinanceMCPClient:
                 self.logger.error(f"Direct yfinance cash flow fallback failed: {e}")
                 return {"symbol": symbol, "data": {}, "error": str(e), "source": "error"}
 
-        return await self._fetch_with_mcp_priority(
+        return await self._fetch_with_fallback(
             "get_cash_flow",
             {"symbol": symbol},
             fallback
         )
 
     async def get_comprehensive_data(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get all available data for a ticker in one call.
-
-        Priority: MCP servers → Direct yfinance
-
-        Args:
-            symbol: Stock ticker symbol
-
-        Returns:
-            Comprehensive data dictionary
-        """
+        """Get all available data for a ticker in one call."""
         self.logger.info(f"Fetching comprehensive data for {symbol}")
-        self.logger.info(f"Priority: MCP servers ({len(self.mcp_servers)} available) → Direct yfinance")
+        self.logger.info(f"Priority: MCP server → Direct yfinance")
 
         # Fetch all data concurrently
         results = await asyncio.gather(
@@ -555,10 +421,11 @@ class YahooFinanceMCPClient:
                 self.logger.error(f"Error in data fetch {i}: {result}")
 
         # Log data sources
-        sources = [
-            info.get("source", "unknown") if isinstance(info, dict) else "error",
-            historical.get("source", "unknown") if isinstance(historical, dict) else "error"
-        ]
+        sources = []
+        if isinstance(info, dict):
+            sources.append(info.get("source", "unknown"))
+        if isinstance(historical, dict):
+            sources.append(historical.get("source", "unknown"))
         self.logger.info(f"Data sources: {', '.join(set(sources))}")
 
         return {
