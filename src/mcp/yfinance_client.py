@@ -2,7 +2,7 @@
 Enhanced MCP client for Yahoo Finance data integration.
 
 This client uses the official MCP library with proper session handling.
-It prioritizes MCP servers with automatic fallback to direct yfinance.
+It discovers available tools dynamically and maps them to our internal methods.
 
 MCP Priority Strategy:
 1. Try MCP server with proper session (streamablehttp_client)
@@ -11,7 +11,7 @@ MCP Priority Strategy:
 
 import json
 import asyncio
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
 import yfinance as yf
@@ -30,12 +30,31 @@ except ImportError:
 logger = setup_logger("mcp.yfinance")
 
 
+# Tool mapping: our internal names -> possible MCP tool names
+TOOL_MAPPING = {
+    "get_ticker_info": ["get_ticker_info", "get_stock_info"],
+    "get_ticker_historical": ["get_price_history", "get_historical_stock_prices"],
+    "get_ticker_news": ["get_ticker_news", "get_yahoo_finance_news"],
+    "get_balance_sheet": ["get_financial_statement"],
+    "get_income_statement": ["get_financial_statement"],
+    "get_cash_flow": ["get_financial_statement"],
+}
+
+# Argument mapping: our argument names -> possible MCP argument names
+ARG_MAPPING = {
+    "symbol": ["ticker", "symbol", "symbols"],
+    "period": ["period", "range"],
+    "interval": ["interval"],
+    "count": ["count", "limit", "num_articles"],
+}
+
+
 class YahooFinanceMCPClient:
     """
     Yahoo Finance client with MCP priority and fallback.
 
     Uses proper MCP session handling with streamablehttp_client.
-    Falls back to direct yfinance if MCP is unavailable.
+    Discovers available tools dynamically and maps arguments correctly.
     """
 
     def __init__(self):
@@ -43,9 +62,10 @@ class YahooFinanceMCPClient:
         self.logger = logger
         self.mcp_config = self._load_mcp_config()
         self.fallback_enabled = self.mcp_config.get("fallbackStrategy", {}).get("enabled", True)
-        self._session = None
-        self._tools = None
-        self._tools_map = {}
+
+        # Tool discovery cache
+        self._available_tools: Dict[str, Any] = {}
+        self._tools_discovered = False
 
         # Get MCP server config
         servers = self.mcp_config.get("mcpServers", {})
@@ -64,7 +84,6 @@ class YahooFinanceMCPClient:
         print(f"{'='*60}")
         print(f"MCP Available: {MCP_AVAILABLE}")
         print(f"MCP URL: {self.mcp_url}")
-        print(f"Headers: {self.mcp_headers}")
         print(f"Fallback enabled: {self.fallback_enabled}")
         print(f"{'='*60}\n")
 
@@ -80,6 +99,43 @@ class YahooFinanceMCPClient:
             self.logger.warning(f"Failed to load MCP config: {e}, using defaults")
             return {"mcpServers": {}, "fallbackStrategy": {"enabled": True}}
 
+    def _find_mcp_tool(self, our_method: str) -> Optional[str]:
+        """Find the correct MCP tool name for our method."""
+        possible_names = TOOL_MAPPING.get(our_method, [our_method])
+        for name in possible_names:
+            if name in self._available_tools:
+                return name
+        return None
+
+    def _map_arguments(self, tool_name: str, our_args: Dict[str, Any]) -> Dict[str, Any]:
+        """Map our argument names to the MCP tool's expected argument names."""
+        if tool_name not in self._available_tools:
+            return our_args
+
+        tool_info = self._available_tools[tool_name]
+        input_schema = tool_info.get("inputSchema", {})
+        expected_props = input_schema.get("properties", {})
+        expected_keys = set(expected_props.keys())
+
+        mapped_args = {}
+
+        for our_key, our_value in our_args.items():
+            # Try to find the correct argument name
+            possible_names = ARG_MAPPING.get(our_key, [our_key])
+            matched = False
+
+            for possible_name in possible_names:
+                if possible_name in expected_keys:
+                    mapped_args[possible_name] = our_value
+                    matched = True
+                    break
+
+            if not matched:
+                # Keep original if no mapping found
+                mapped_args[our_key] = our_value
+
+        return mapped_args
+
     @asynccontextmanager
     async def _get_mcp_session(self):
         """Create and manage MCP session with proper streaming."""
@@ -88,71 +144,111 @@ class YahooFinanceMCPClient:
             return
 
         try:
-            print(f"\n{'='*60}")
-            print(f"🔌 CONNECTING TO MCP SERVER")
-            print(f"{'='*60}")
-            print(f"URL: {self.mcp_url}")
-            print(f"Headers: {self.mcp_headers}")
-
             async with streamablehttp_client(
                 self.mcp_url,
                 headers=self.mcp_headers
             ) as (read, write, _):
                 async with ClientSession(read, write) as session:
-                    print("🔄 Initializing session...")
                     await session.initialize()
-                    print("✅ Session initialized!")
 
-                    # List available tools
-                    tools_result = await session.list_tools()
-                    tools = tools_result.tools if hasattr(tools_result, 'tools') else []
+                    # Discover tools if not already done
+                    if not self._tools_discovered:
+                        tools_result = await session.list_tools()
+                        tools = tools_result.tools if hasattr(tools_result, 'tools') else []
 
-                    print(f"📦 Available tools: {len(tools)}")
-                    for tool in tools:
-                        tool_name = tool.name if hasattr(tool, 'name') else str(tool)
-                        print(f"  • {tool_name}")
-                        self._tools_map[tool_name] = tool
+                        print(f"\n{'='*60}")
+                        print(f"📦 DISCOVERED {len(tools)} MCP TOOLS:")
+                        print(f"{'='*60}")
 
-                    print(f"{'='*60}\n")
+                        for tool in tools:
+                            tool_name = tool.name if hasattr(tool, 'name') else str(tool)
+                            tool_desc = tool.description if hasattr(tool, 'description') else ""
+                            input_schema = tool.inputSchema if hasattr(tool, 'inputSchema') else {}
+
+                            self._available_tools[tool_name] = {
+                                "name": tool_name,
+                                "description": tool_desc,
+                                "inputSchema": input_schema
+                            }
+
+                            # Show tool info
+                            props = input_schema.get("properties", {})
+                            args_list = list(props.keys())
+                            print(f"  • {tool_name}")
+                            if args_list:
+                                print(f"    Args: {', '.join(args_list)}")
+
+                        print(f"{'='*60}\n")
+                        self._tools_discovered = True
 
                     yield session
 
         except Exception as e:
             print(f"❌ MCP Connection Error: {e}")
-            print(f"{'='*60}\n")
             self.logger.error(f"MCP session error: {e}")
             yield None
 
-    async def _call_mcp_tool(self, session: ClientSession, tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Call an MCP tool and return the result."""
-        try:
-            print(f"🔧 Calling tool: {tool_name}")
-            print(f"   Arguments: {arguments}")
+    async def _call_mcp_tool(
+        self,
+        session: ClientSession,
+        our_method: str,
+        our_args: Dict[str, Any],
+        extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        Call an MCP tool with automatic tool and argument mapping.
 
-            result = await session.call_tool(tool_name, arguments)
+        Returns:
+            Tuple of (success, data)
+        """
+        # Find the correct MCP tool
+        mcp_tool = self._find_mcp_tool(our_method)
+
+        if not mcp_tool:
+            print(f"⚠️ No MCP tool found for: {our_method}")
+            self.logger.warning(f"No MCP tool mapping for {our_method}")
+            return False, None
+
+        # Map arguments
+        mapped_args = self._map_arguments(mcp_tool, our_args)
+
+        # Add extra arguments if provided (e.g., statement_type for financial_statement)
+        if extra_args:
+            mapped_args.update(extra_args)
+
+        try:
+            print(f"🔧 Calling: {mcp_tool}")
+            print(f"   Args: {mapped_args}")
+
+            result = await session.call_tool(mcp_tool, mapped_args)
 
             # Parse the result
             if hasattr(result, 'content') and result.content:
                 content = result.content[0]
                 if hasattr(content, 'text'):
-                    data = json.loads(content.text)
-                    print(f"✅ Tool returned data")
-                    return data
+                    try:
+                        data = json.loads(content.text)
+                        print(f"✅ Success!")
+                        return True, data
+                    except json.JSONDecodeError:
+                        return True, {"raw_text": content.text}
                 elif hasattr(content, 'data'):
-                    return content.data
+                    return True, content.data
 
-            return result
+            return True, result
 
         except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Tool call failed: {error_msg}")
             self.logger.error(f"MCP tool call failed: {e}")
-            print(f"❌ Tool call failed: {e}")
-            return None
+            return False, None
 
     async def _fetch_with_fallback(
         self,
-        tool_name: str,
-        arguments: Dict[str, Any],
-        fallback_func
+        our_method: str,
+        our_args: Dict[str, Any],
+        fallback_func,
+        extra_mcp_args: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Fetch data via MCP with fallback to direct yfinance."""
 
@@ -161,8 +257,10 @@ class YahooFinanceMCPClient:
             try:
                 async with self._get_mcp_session() as session:
                     if session:
-                        result = await self._call_mcp_tool(session, tool_name, arguments)
-                        if result:
+                        success, result = await self._call_mcp_tool(
+                            session, our_method, our_args, extra_mcp_args
+                        )
+                        if success and result:
                             if isinstance(result, dict):
                                 result["source"] = "mcp"
                             return result
@@ -171,10 +269,8 @@ class YahooFinanceMCPClient:
 
         # Fallback to direct yfinance
         if self.fallback_enabled:
-            print(f"\n{'='*60}")
-            print(f"⚠️ MCP UNAVAILABLE - USING DIRECT YFINANCE")
-            print(f"{'='*60}\n")
-            self.logger.info(f"Using direct yfinance fallback for {tool_name}")
+            print(f"⚠️ Using fallback for: {our_method}")
+            self.logger.info(f"Using direct yfinance fallback for {our_method}")
             return await fallback_func()
         else:
             raise Exception("MCP failed and fallback is disabled")
@@ -298,7 +394,7 @@ class YahooFinanceMCPClient:
         )
 
         if isinstance(result, dict):
-            return result.get("articles", [])
+            return result.get("articles", result.get("news", []))
         return result if isinstance(result, list) else []
 
     async def get_balance_sheet(self, symbol: str) -> Dict[str, Any]:
@@ -330,7 +426,8 @@ class YahooFinanceMCPClient:
         return await self._fetch_with_fallback(
             "get_balance_sheet",
             {"symbol": symbol},
-            fallback
+            fallback,
+            extra_mcp_args={"statement_type": "balance_sheet"}
         )
 
     async def get_income_statement(self, symbol: str) -> Dict[str, Any]:
@@ -362,7 +459,8 @@ class YahooFinanceMCPClient:
         return await self._fetch_with_fallback(
             "get_income_statement",
             {"symbol": symbol},
-            fallback
+            fallback,
+            extra_mcp_args={"statement_type": "income_statement"}
         )
 
     async def get_cash_flow(self, symbol: str) -> Dict[str, Any]:
@@ -394,7 +492,8 @@ class YahooFinanceMCPClient:
         return await self._fetch_with_fallback(
             "get_cash_flow",
             {"symbol": symbol},
-            fallback
+            fallback,
+            extra_mcp_args={"statement_type": "cash_flow"}
         )
 
     async def get_comprehensive_data(self, symbol: str) -> Dict[str, Any]:
