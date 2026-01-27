@@ -1,9 +1,13 @@
 {
   "mcpServers": {
-    "alpaca-local": {
+    "yahoo-finance-obot": {
       "type": "http",
-      "url": "http://localhost:8080/mcp-connect/default-alpaca-mcp-local-778d19fb962xz",
-      "description": "Local Alpaca MCP Server - HTTP endpoint",
+      "url": "http://localhost:8080/mcp-connect/default-yahoo-finance-mcp",
+      "headers": {
+        "Content-Type": "application/json",
+        "task_id": "YOUR_APP_ID_HERE"
+      },
+      "description": "Yahoo Finance MCP Server via Obot",
       "priority": 1,
       "enabled": true
     }
@@ -13,7 +17,7 @@
     "maxRetries": 3,
     "retryDelay": 2000,
     "useDirectFetch": true,
-    "description": "If all MCP servers fail, fallback to direct yfinance library"
+    "description": "If MCP fails, fallback to direct yfinance library"
   },
   "caching": {
     "enabled": true,
