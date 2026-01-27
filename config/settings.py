@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     MAX_PARALLEL_TASKS: int = 5
 
     # MCP Settings
+    MCP_URL: Optional[str] = None
     MCP_YFINANCE_ENABLED: bool = True
 
     class Config:
