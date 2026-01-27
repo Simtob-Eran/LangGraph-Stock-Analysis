@@ -11,6 +11,7 @@ MCP Priority Strategy:
 
 import json
 import asyncio
+import os
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -45,7 +46,7 @@ ARG_MAPPING = {
     "symbol": ["ticker", "symbol", "symbols"],
     "period": ["period", "range"],
     "interval": ["interval"],
-    "count": ["count", "limit", "num_articles"],
+    "count": ["max_items", "count", "limit", "num_articles"],
 }
 
 
@@ -67,23 +68,27 @@ class YahooFinanceMCPClient:
         self._available_tools: Dict[str, Any] = {}
         self._tools_discovered = False
 
-        # Get MCP server config
-        servers = self.mcp_config.get("mcpServers", {})
-        self.mcp_url = None
+        # Priority: Environment variable > Config file
+        self.mcp_url = os.getenv("MCP_URL")
         self.mcp_headers = {}
+        self.mcp_name = "env"
 
-        for name, config in servers.items():
-            if config.get("enabled", True):
-                self.mcp_url = config.get("url")
-                self.mcp_headers = config.get("headers", {})
-                self.mcp_name = name
-                break
+        # If no env var, try config file
+        if not self.mcp_url:
+            servers = self.mcp_config.get("mcpServers", {})
+            for name, config in servers.items():
+                if config.get("enabled", True):
+                    self.mcp_url = config.get("url")
+                    self.mcp_headers = config.get("headers", {})
+                    self.mcp_name = name
+                    break
 
         print(f"\n{'='*60}")
         print(f"🚀 MCP CLIENT INITIALIZED")
         print(f"{'='*60}")
         print(f"MCP Available: {MCP_AVAILABLE}")
         print(f"MCP URL: {self.mcp_url}")
+        print(f"Source: {'Environment Variable' if os.getenv('MCP_URL') else 'Config File'}")
         print(f"Fallback enabled: {self.fallback_enabled}")
         print(f"{'='*60}\n")
 
