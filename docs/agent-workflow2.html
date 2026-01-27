@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph Stock Analysis - Agent Workflow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            overflow: hidden;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .workflow {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 20px;
+            max-width: 95vw;
+        }
+        .agent-box {
+            width: 160px;
+            height: 200px;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-weight: 500;
+            font-size: 1.1em;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            background: #ecf0f1;
+            border: 3px solid #bdc3c7;
+            padding: 20px;
+            flex-shrink: 0;
+            color: #2c3e50;
+        }
+        .agent-box:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            z-index: 10;
+        }
+        .orchestrator {
+            width: 180px;
+            height: 220px;
+            background: #95a5a6;
+            border: 4px solid #7f8c8d;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+        .output {
+            width: 180px;
+            height: 220px;
+            background: #95a5a6;
+            border: 4px solid #7f8c8d;
+            font-size: 1.2em;
+            font-weight: 600;
+        }
+        .data-collector {
+            background: #d5dbdb;
+            border-color: #95a5a6;
+        }
+        .parallel-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            position: relative;
+            padding: 20px;
+            background: rgba(52, 73, 94, 0.4);
+            border-radius: 20px;
+            border: 2px dashed #95a5a6;
+        }
+        .parallel-label {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #7f8c8d;
+            padding: 6px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            color: #fff;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .parallel-box {
+            background: #ecf0f1;
+            border-color: #95a5a6;
+            width: 140px;
+            height: 160px;
+            font-size: 1em;
+        }
+        .debate, .risk, .synthesis, .feedback {
+            background: #d5dbdb;
+            border-color: #95a5a6;
+        }
+        .arrow {
+            font-size: 3em;
+            color: #95a5a6;
+            flex-shrink: 0;
+        }
+        .step-number {
+            display: inline-block;
+            background: #7f8c8d;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            line-height: 32px;
+            font-size: 1em;
+            color: #fff;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .label {
+            font-size: 1.1em;
+            line-height: 1.3;
+            font-weight: 600;
+        }
+        .subtitle {
+            font-size: 0.85em;
+            font-weight: normal;
+            margin-top: 6px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 LangGraph Stock Analysis - Agent Workflow</h1>
+
+    <div class="workflow">
+        <!-- Orchestrator -->
+        <div class="agent-box orchestrator">
+            <div class="icon">🎯</div>
+            <div class="label">Orchestrator</div>
+            <div class="subtitle">Manager</div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Data Collector -->
+        <div class="agent-box data-collector">
+            <div class="step-number">1</div>
+            <div class="icon">📊</div>
+            <div class="label">Data<br>Collector</div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Parallel Execution -->
+        <div class="parallel-group">
+            <div class="parallel-label">⚡ PARALLEL EXECUTION</div>
+            <div class="agent-box parallel-box">
+                <div class="step-number">2</div>
+                <div class="icon">📈</div>
+                <div class="label">Fundamental<br>Analyst</div>
+            </div>
+            <div class="agent-box parallel-box">
+                <div class="step-number">3</div>
+                <div class="icon">📉</div>
+                <div class="label">Technical<br>Analyst</div>
+            </div>
+            <div class="agent-box parallel-box">
+                <div class="step-number">4</div>
+                <div class="icon">💬</div>
+                <div class="label">Sentiment<br>Analyst</div>
+            </div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Debate Agent -->
+        <div class="agent-box debate">
+            <div class="step-number">5</div>
+            <div class="icon">⚖️</div>
+            <div class="label">Debate<br>Agent</div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Risk Manager -->
+        <div class="agent-box risk">
+            <div class="step-number">6</div>
+            <div class="icon">🛡️</div>
+            <div class="label">Risk<br>Manager</div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Synthesis Agent -->
+        <div class="agent-box synthesis">
+            <div class="step-number">7</div>
+            <div class="icon">📝</div>
+            <div class="label">Synthesis<br>Agent</div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Feedback Loop -->
+        <div class="agent-box feedback">
+            <div class="step-number">8</div>
+            <div class="icon">🔄</div>
+            <div class="label">Feedback<br>Loop</div>
+        </div>
+
+        <div class="arrow">→</div>
+
+        <!-- Final Report -->
+        <div class="agent-box output">
+            <div class="icon">📄</div>
+            <div class="label">Final<br>Report</div>
+            <div class="subtitle">MD + JSON</div>
+        </div>
+    </div>
+</body>
+</html>

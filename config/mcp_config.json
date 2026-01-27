@@ -2,7 +2,7 @@
   "mcpServers": {
     "yahoo-finance-obot": {
       "type": "http",
-      "url": "http://localhost:8080/mcp-connect/default-yahoo-finance-mcp",
+      "url": "http://localhost:8080/mcp-connect/default-yahoo-finance-mcp-702da210gtbb2",
       "headers": {
         "Content-Type": "application/json",
         "task_id": "YOUR_APP_ID_HERE"
