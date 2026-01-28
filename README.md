@@ -23,11 +23,14 @@ This system demonstrates advanced multi-agent AI architecture where specialized 
 - 🤖 **9 Specialized AI Agents** working in concert
 - 📈 **Comprehensive Analysis**: Fundamental, Technical, Sentiment, Risk
 - 🔄 **LangGraph Orchestration**: Efficient workflow management
-- 💾 **SQLite Logging**: Complete analysis history and caching
+- 💾 **SQLite Logging**: Complete analysis history and audit trail
+- 🔄 **Fresh Data**: No caching - always fetches latest data
 - 🆓 **Free Data Source**: Yahoo Finance (no API key needed)
-- 📝 **Professional Reports**: Markdown and JSON output
+- 📝 **Professional Reports**: Auto-generated Markdown reports with timestamps
 - ⚡ **Parallel Processing**: Analyze multiple stocks concurrently
+- 📦 **Batch Processing**: Process multiple stocks from queries.json
 - 🔒 **Robust Error Handling**: Graceful degradation and retry logic
+- 🌐 **MCP Integration**: Connects to local Alpaca MCP server for data
 
 ## 📋 Requirements
 
@@ -84,8 +87,10 @@ MCP_YFINANCE_ENABLED=true
 
 ### 3. Run Analysis
 
+#### Single Stock Analysis
+
 ```bash
-# Analyze a single stock
+# Analyze a single stock (auto-saves report to reports/ folder)
 python -m src.main analyze "AAPL"
 
 # Analyze with custom query
@@ -94,12 +99,48 @@ python -m src.main analyze "Analyze Apple stock"
 # Compare multiple stocks
 python -m src.main analyze "AAPL,MSFT,GOOGL"
 
-# Save report to file
+# Save report to custom file
 python -m src.main analyze "AAPL" -o reports/aapl_analysis.md
 
 # Get JSON output
 python -m src.main analyze "AAPL" --json
 ```
+
+#### Batch Processing
+
+Process multiple stocks from a JSON file:
+
+```bash
+# Run batch analysis (uses queries.json by default)
+python -m src.main batch
+
+# Use custom queries file
+python -m src.main batch -f my_queries.json
+```
+
+Create a `queries.json` file in the project root:
+
+```json
+{
+  "queries": [
+    "AAPL",
+    "GOOGL",
+    "MSFT",
+    "TSLA",
+    "NVDA"
+  ]
+}
+```
+
+Each stock will be analyzed separately with its own timestamped report saved to `reports/` folder.
+
+#### Report Files
+
+Reports are automatically saved with timestamp format: `YYYY-MM-DD-HH-MM-SS-TICKER.md`
+
+Example: `2026-01-28-14-30-45-AAPL.md`
+
+All reports are saved in the `reports/` directory.
 
 ## 📁 Project Structure
 
@@ -108,14 +149,14 @@ LangGraph-Stock-Analysis/
 ├── config/                      # Configuration files
 │   ├── __init__.py
 │   ├── settings.py             # Environment settings
-│   └── mcp_config.json         # Yahoo Finance MCP config
+│   └── mcp_config.json         # MCP server config (Alpaca local)
 ├── src/
 │   ├── __init__.py
-│   ├── main.py                 # CLI entry point
+│   ├── main.py                 # CLI entry point (with batch processing)
 │   ├── orchestrator.py         # LangGraph orchestrator
 │   ├── agents/                 # All agent implementations
 │   │   ├── base_agent.py
-│   │   ├── data_collector.py
+│   │   ├── data_collector.py   # No caching - fresh data
 │   │   ├── fundamental_analyst.py
 │   │   ├── technical_analyst.py
 │   │   ├── sentiment_analyst.py
@@ -123,8 +164,8 @@ LangGraph-Stock-Analysis/
 │   │   ├── risk_manager.py
 │   │   ├── synthesis_agent.py
 │   │   └── feedback_loop.py
-│   ├── mcp/                    # Yahoo Finance integration
-│   │   └── yfinance_client.py
+│   ├── mcp/                    # MCP integration
+│   │   └── yfinance_client.py  # HTTP-based MCP client
 │   ├── utils/                  # Utilities
 │   │   ├── database.py
 │   │   ├── logger.py
@@ -132,10 +173,14 @@ LangGraph-Stock-Analysis/
 │   └── models/                 # Data models
 │       ├── schemas.py
 │       └── prompts.py
-├── data/                       # Database and cache
+├── data/                       # Database
 │   └── analysis.db
 ├── logs/                       # Log files
+├── reports/                    # Auto-generated analysis reports
+│   ├── .gitkeep
+│   └── YYYY-MM-DD-HH-MM-SS-TICKER.md
 ├── tests/                      # Unit tests
+├── queries.json                # Batch processing queries
 ├── .env                        # Environment variables (gitignored)
 ├── .env.example                # Environment template
 ├── .gitignore
