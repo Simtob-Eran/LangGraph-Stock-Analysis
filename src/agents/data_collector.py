@@ -37,34 +37,18 @@ class DataCollectorAgent(BaseAgent):
 
         self.logger.info(f"Collecting data for {ticker}")
 
-        # Check cache first
-        cached_data = self.db.get_cached_data(ticker)
-        if cached_data:
-            self.logger.info(f"Using cached data for {ticker}")
-            return {
-                "ticker": ticker,
-                "data": cached_data,
-                "from_cache": True,
-                "confidence": 1.0,
-                "reasoning": "Data retrieved from cache"
-            }
-
-        # Fetch comprehensive data
+        # Always fetch fresh data (no cache)
         try:
             raw_data = await self.yfinance_client.get_comprehensive_data(ticker)
 
             # Structure the data
             structured_data = self._structure_data(raw_data)
 
-            # Cache the data for 24 hours
-            self.db.cache_data(ticker, structured_data, hours=24)
-
             return {
                 "ticker": ticker,
                 "data": structured_data,
-                "from_cache": False,
                 "confidence": 0.9,
-                "reasoning": "Successfully collected comprehensive data from Yahoo Finance"
+                "reasoning": "Successfully collected fresh data from Yahoo Finance"
             }
 
         except Exception as e:

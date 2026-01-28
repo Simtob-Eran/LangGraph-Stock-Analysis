@@ -79,27 +79,64 @@ DATABASE_PATH=./data/analysis.db
 LOG_LEVEL=INFO
 MAX_PARALLEL_TASKS=5
 
+# MCP Settings
+MCP_URL=http://localhost:8080/mcp-connect/your-mcp-server-id
 MCP_YFINANCE_ENABLED=true
 ```
 
 ### 3. Run Analysis
 
 ```bash
-# Analyze a single stock
+# Analyze a single stock (auto-saves to reports/ folder)
 python -m src.main analyze "AAPL"
 
-# Analyze with custom query
-python -m src.main analyze "Analyze Apple stock"
+# Analyze without auto-saving
+python -m src.main analyze "AAPL" --no-save
 
-# Compare multiple stocks
-python -m src.main analyze "AAPL,MSFT,GOOGL"
-
-# Save report to file
-python -m src.main analyze "AAPL" -o reports/aapl_analysis.md
+# Save report to custom file
+python -m src.main analyze "AAPL" -o custom_report.md
 
 # Get JSON output
 python -m src.main analyze "AAPL" --json
 ```
+
+### 4. Batch Analysis
+
+Run multiple stock analyses from a JSON file:
+
+```bash
+# Run batch analysis from queries.json
+python -m src.main batch
+
+# Run batch from custom file
+python -m src.main batch -f my_queries.json
+```
+
+**queries.json format:**
+```json
+{
+  "queries": [
+    "AAPL",
+    "GOOGL",
+    "MSFT"
+  ]
+}
+```
+
+Each ticker is analyzed separately with its own report saved to `reports/` folder.
+
+### 5. Reports
+
+All reports are automatically saved to the `reports/` folder with timestamp filenames:
+
+```
+reports/
+├── 2026-01-28-14-30-45-AAPL.md
+├── 2026-01-28-14-32-10-GOOGL.md
+└── 2026-01-28-14-33-55-MSFT.md
+```
+
+Filename format: `YYYY-MM-DD-HH-MM-SS-TICKER.md`
 
 ## 📁 Project Structure
 
@@ -132,10 +169,13 @@ LangGraph-Stock-Analysis/
 │   └── models/                 # Data models
 │       ├── schemas.py
 │       └── prompts.py
-├── data/                       # Database and cache
+├── data/                       # Database
 │   └── analysis.db
+├── reports/                    # Generated analysis reports
+│   └── YYYY-MM-DD-HH-MM-SS-TICKER.md
 ├── logs/                       # Log files
 ├── tests/                      # Unit tests
+├── queries.json                # Batch analysis tickers
 ├── .env                        # Environment variables (gitignored)
 ├── .env.example                # Environment template
 ├── .gitignore
@@ -176,10 +216,10 @@ Final Report
 ### Agent Responsibilities
 
 #### 1. Data Collector Agent
-- Fetches stock data from Yahoo Finance
+- Fetches fresh stock data from Yahoo Finance
 - Collects: prices, financials, news
-- Implements 24-hour caching
 - Handles data normalization
+- Supports MCP server integration
 
 #### 2. Fundamental Analyst Agent
 - Calculates financial ratios
@@ -296,6 +336,7 @@ All data is sourced from **Yahoo Finance** via the `yfinance` library:
 - `DATABASE_PATH`: SQLite database location
 - `LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
 - `MAX_PARALLEL_TASKS`: Max concurrent stock analyses
+- `MCP_URL`: MCP server URL (optional, falls back to config file)
 
 ### Model Selection
 
@@ -307,9 +348,9 @@ Supported models:
 ## 📈 Performance
 
 - **Single Stock Analysis**: 30-60 seconds
-- **Multiple Stocks** (parallel): 40-90 seconds for 5 stocks
-- **Data Caching**: 24-hour cache reduces repeated API calls
+- **Batch Analysis**: Each ticker analyzed sequentially with fresh data
 - **Database Logging**: All analyses logged for history
+- **Auto-Save Reports**: Reports saved to `reports/` folder with timestamps
 
 ## 🛡️ Error Handling
 
