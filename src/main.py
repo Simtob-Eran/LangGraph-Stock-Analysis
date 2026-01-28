@@ -3,7 +3,9 @@
 import asyncio
 import argparse
 import sys
+import json
 from pathlib import Path
+from datetime import datetime
 from src.orchestrator import Orchestrator
 from src.utils.logger import setup_logger
 from config.settings import settings
@@ -11,7 +13,23 @@ from config.settings import settings
 logger = setup_logger("main")
 
 
-async def run_analysis(query: str, output_file: str = None, json_output: bool = False):
+def generate_report_filename(ticker: str = None) -> str:
+    """
+    Generate report filename with timestamp format: YYYY-MM-DD-HH-MM-SS.md
+
+    Args:
+        ticker: Optional ticker symbol to include in filename
+
+    Returns:
+        Formatted filename string
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    if ticker:
+        return f"{timestamp}-{ticker}.md"
+    return f"{timestamp}.md"
+
+
+async def run_analysis(query: str, output_file: str = None, json_output: bool = False, auto_save: bool = True):
     """
     Run stock analysis for the given query.
 
@@ -69,7 +87,6 @@ async def run_analysis(query: str, output_file: str = None, json_output: bool = 
 
             # Output based on format
             if json_output:
-                import json
                 json_summary = synthesis.get("json_summary", {})
                 print(json.dumps(json_summary, indent=2, default=str))
             else:
@@ -80,7 +97,21 @@ async def run_analysis(query: str, output_file: str = None, json_output: bool = 
                 print()
                 print(markdown_report)
 
-            # Save to file if requested
+            # Auto-save report with timestamp if enabled
+            if auto_save and not json_output:
+                reports_dir = Path("reports")
+                reports_dir.mkdir(parents=True, exist_ok=True)
+
+                report_filename = generate_report_filename(ticker)
+                report_path = reports_dir / report_filename
+
+                with open(report_path, 'w', encoding='utf-8') as f:
+                    f.write(markdown_report)
+
+                print()
+                print(f"[INFO] Report automatically saved to: {report_path}")
+
+            # Save to custom file if requested
             if output_file:
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,6 +146,85 @@ async def run_analysis(query: str, output_file: str = None, json_output: bool = 
         return 1
 
 
+async def run_batch_analysis(queries_file: str = "queries.json"):
+    """
+    Run batch analysis from queries.json file.
+
+    Args:
+        queries_file: Path to queries JSON file
+
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    queries_path = Path(queries_file)
+
+    if not queries_path.exists():
+        print(f"[ERROR] Queries file not found: {queries_file}")
+        print(f"[INFO] Create a file with format:")
+        print(json.dumps({"queries": ["AAPL", "GOOGL", "MSFT"]}, indent=2))
+        return 1
+
+    # Load queries
+    try:
+        with open(queries_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            queries = data.get("queries", [])
+    except Exception as e:
+        print(f"[ERROR] Failed to load queries file: {e}")
+        return 1
+
+    if not queries:
+        print(f"[ERROR] No queries found in {queries_file}")
+        return 1
+
+    print("=" * 80)
+    print("BATCH STOCK ANALYSIS")
+    print("=" * 80)
+    print(f"Total queries: {len(queries)}")
+    print(f"Queries: {', '.join(queries)}")
+    print("=" * 80)
+    print()
+
+    # Process each query
+    total_queries = len(queries)
+    successful = 0
+    failed = 0
+
+    for i, query in enumerate(queries, 1):
+        print()
+        print("=" * 80)
+        print(f"PROCESSING QUERY {i}/{total_queries}: {query}")
+        print("=" * 80)
+        print()
+
+        try:
+            result = await run_analysis(query, auto_save=True, json_output=False)
+            if result == 0:
+                successful += 1
+                print(f"[SUCCESS] Query {i}/{total_queries} completed: {query}")
+            else:
+                failed += 1
+                print(f"[FAILED] Query {i}/{total_queries} failed: {query}")
+        except Exception as e:
+            failed += 1
+            logger.error(f"Error processing query {query}: {e}", exc_info=True)
+            print(f"[ERROR] Query {i}/{total_queries} error: {query} - {e}")
+
+        print()
+
+    # Summary
+    print("=" * 80)
+    print("BATCH ANALYSIS SUMMARY")
+    print("=" * 80)
+    print(f"Total queries: {total_queries}")
+    print(f"Successful: {successful}")
+    print(f"Failed: {failed}")
+    print(f"Success rate: {(successful/total_queries*100):.1f}%")
+    print("=" * 80)
+
+    return 0 if failed == 0 else 1
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -136,6 +246,12 @@ Examples:
 
   # Get JSON output
   python -m src.main analyze "AAPL" --json
+
+  # Run batch analysis from queries.json
+  python -m src.main batch
+
+  # Run batch analysis from custom file
+  python -m src.main batch -f my_queries.json
 
 For more information, see README.md
         """
@@ -161,6 +277,15 @@ For more information, see README.md
         help="Output JSON format instead of markdown"
     )
 
+    # Batch command
+    batch_parser = subparsers.add_parser("batch", help="Run batch analysis from queries.json")
+    batch_parser.add_argument(
+        "-f", "--file",
+        type=str,
+        default="queries.json",
+        help="Path to queries JSON file (default: queries.json)"
+    )
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -174,7 +299,13 @@ For more information, see README.md
         return asyncio.run(run_analysis(
             args.query,
             output_file=args.output,
-            json_output=args.json
+            json_output=args.json,
+            auto_save=True
+        ))
+
+    if args.command == "batch":
+        return asyncio.run(run_batch_analysis(
+            queries_file=args.file
         ))
 
     return 0
