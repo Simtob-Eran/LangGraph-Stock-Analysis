@@ -12,6 +12,7 @@ from config.settings import settings
 from src.mcp.yfinance_client import (
     create_oauth_provider,
     set_oauth_auth,
+    pre_authenticate_oauth,
     OAUTH_AVAILABLE,
 )
 
@@ -191,9 +192,19 @@ async def run_batch_analysis(queries_file: str = "queries.json", use_oauth: bool
             scope=scope,
             client_name=settings.OAUTH_CLIENT_NAME,
         )
-        set_oauth_auth(oauth_provider, mcp_url=mcp_url)
-        print("[INFO] OAuth provider configured. Authentication will occur on first MCP call.")
+
+        # Pre-authenticate before starting batch processing
+        print("[INFO] Starting OAuth authentication flow...")
+        print("[INFO] You will need to authorize in your browser and paste the callback URL.")
         print()
+
+        auth_success = await pre_authenticate_oauth(mcp_url, oauth_provider)
+        if not auth_success:
+            print("[ERROR] OAuth authentication failed. Cannot proceed.")
+            return 1
+
+        set_oauth_auth(oauth_provider, mcp_url=mcp_url)
+        print("[INFO] OAuth authentication complete. Starting batch analysis...")
 
     queries_path = Path(queries_file)
 

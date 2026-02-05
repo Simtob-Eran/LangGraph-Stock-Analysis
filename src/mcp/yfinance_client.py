@@ -102,6 +102,42 @@ def create_oauth_provider(mcp_url: str, redirect_uri: str, scope: str, client_na
         callback_handler=handle_callback,
     )
 
+
+async def pre_authenticate_oauth(mcp_url: str, oauth_auth: OAuthClientProvider) -> bool:
+    """Pre-authenticate with OAuth before starting batch processing.
+
+    This ensures the OAuth flow completes before we start the analysis,
+    so the user can enter the callback URL interactively.
+
+    Args:
+        mcp_url: The MCP server URL.
+        oauth_auth: The OAuth provider.
+
+    Returns:
+        True if authentication succeeded, False otherwise.
+    """
+    if not MCP_AVAILABLE:
+        return False
+
+    print("\n" + "=" * 60)
+    print("🔐 Starting OAuth Authentication...")
+    print("=" * 60 + "\n")
+
+    try:
+        async with streamablehttp_client(
+            mcp_url,
+            auth=oauth_auth
+        ) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                print("\n✅ OAuth authentication successful!")
+                print("=" * 60 + "\n")
+                return True
+    except Exception as e:
+        print(f"\n❌ OAuth authentication failed: {e}")
+        print("=" * 60 + "\n")
+        return False
+
 logger = setup_logger("mcp.yfinance")
 
 
