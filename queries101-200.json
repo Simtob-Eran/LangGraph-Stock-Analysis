@@ -1,0 +1,14 @@
+{
+  "queries": [
+    "BX", "HCA", "BMY", "SBUX", "CEG", "MO", "CMCSA", "KKR", "MCK", "ADP",
+    "CME", "GLW", "GD", "ICE", "SO", "SNPS", "NOC", "HOOD", "WDC", "DUK",
+    "NKE", "WM", "MCO", "FCX", "CVS", "UPS", "PNC", "STX", "DASH", "USB",
+    "MRSH", "CDNS", "TT", "HWM", "MAR", "SHW", "AMT", "ORLY", "MMM", "EMR",
+    "BK", "CRH", "REGN", "GM", "TDG", "ECL", "ABNB", "WMB", "CMI", "MNST",
+    "EQIX", "RCL", "DELL", "APO", "CTAS", "MDLZ", "SNDK", "SLB", "ITW", "FDX",
+    "PWR", "JCI", "CI", "AON", "CSX", "WBD", "COR", "TEL", "CL", "HLT",
+    "MSI", "CVNA", "LHX", "ELV", "RSG", "KMI", "NSC", "TFC", "AEP", "PCAR",
+    "AZO", "AJG", "TRV", "FTNT", "SPG", "ROST", "NXPI", "EOG", "BDX", "URI",
+    "APD", "COIN", "SRE", "ADSK", "AFL", "VST", "NDAQ", "PSX", "VLO", "DLR"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "queries": [
+    "FIS", "NRG", "EXR", "TSCO", "HPE", "MTD", "ULTA", "HAL", "TDY", "DXCM",
+    "DTE", "DOV", "AEE", "CSGP", "CBOE", "NTRS", "KHC", "STZ", "ATO", "FE",
+    "IRM", "HBAN", "CFG", "LEN", "PPL", "ES", "SYF", "TPR", "EXE", "ON",
+    "CNP", "JBL", "STE", "HUBB", "STLD", "FSLR", "BIIB", "WRB", "EFX", "AWK",
+    "BRO", "HUM", "AVB", "WSM", "VLTO", "DVN", "CINF", "PPG", "OMC", "DLTR",
+    "RF", "BR", "EIX", "LDOS", "PHM", "TPL", "GIS", "CHTR", "KEY", "EQR",
+    "WAT", "TSN", "VRSN", "TROW", "ALB", "DRI", "LH", "BG", "CPAY", "IP",
+    "SW", "CHD", "CHRW", "CMS", "LULU", "RL", "LUV", "EXPD", "L", "GPN",
+    "NI", "CTRA", "AMCR", "DGX", "NVR", "INCY", "PFG", "NTAP", "CNC", "SBAC",
+    "DOW", "PTC", "PKG", "GPC", "JBHT", "SNA", "SMCI", "WY", "IFF", "DD"
+  ]
+}

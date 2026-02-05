@@ -1,0 +1,14 @@
+{
+  "queries": [
+    "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "GOOG", "META", "AVGO", "TSLA", "BRK.B",
+    "WMT", "LLY", "JPM", "V", "XOM", "JNJ", "ORCL", "MU", "MA", "COST",
+    "AMD", "PLTR", "ABBV", "HD", "BAC", "NFLX", "PG", "CVX", "KO", "GE",
+    "LRCX", "CSCO", "CAT", "MS", "GS", "PM", "AMAT", "IBM", "WFC", "RTX",
+    "MRK", "UNH", "AXP", "TMO", "INTC", "MCD", "KLAC", "CRM", "LIN", "APH",
+    "TMUS", "PEP", "C", "GEV", "DIS", "TXN", "BA", "ANET", "AMGN", "ABT",
+    "ISRG", "APP", "SCHW", "NEE", "GILD", "BLK", "UBER", "ACN", "T", "DHR",
+    "VZ", "BKNG", "TJX", "QCOM", "SPGI", "ADI", "LOW", "INTU", "PFE", "DE",
+    "HON", "NOW", "NEM", "BSX", "LMT", "UNP", "COF", "SYK", "ETN", "MDT",
+    "PANW", "WELL", "COP", "ADBE", "PGR", "CRWD", "VRTX", "PLD", "CB", "PH"
+  ]
+}

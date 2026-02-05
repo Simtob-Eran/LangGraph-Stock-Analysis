@@ -1,0 +1,14 @@
+{
+  "queries": [
+    "PODD", "TYL", "HPQ", "MRNA", "EVRG", "PNR", "LII", "FTV", "FFIV", "WST",
+    "LNT", "ZBH", "MKC", "TRMB", "HOLX", "APTV", "IT", "HII", "INVH", "LYB",
+    "CDW", "ESS", "J", "COO", "MAA", "TKO", "TTD", "GEN", "FOX", "NDSN",
+    "BALL", "FOXA", "VTRS", "TXT", "AKAM", "IEX", "DECK", "AVY", "ERIE", "ALLE",
+    "CF", "KIM", "GDDY", "MAS", "DPZ", "HRL", "BBY", "EG", "CLX", "SOLV",
+    "BEN", "REG", "RVTY", "BLDR", "JKHY", "HST", "UHS", "SWK", "HAS", "BF.B",
+    "DOC", "UDR", "ZBRA", "EPAM", "IVZ", "ALGN", "AIZ", "WYNN", "CPT", "PNW",
+    "SJM", "DAY", "GL", "CRL", "AES", "TECH", "BXP", "BAX", "FDS", "GNRC",
+    "ARE", "NWSA", "POOL", "AOS", "TAP", "NCLH", "MOH", "MGM", "APA", "MOS",
+    "HSIC", "FRT", "CAG", "SWKS", "CPB", "PAYC", "MTCH", "DVA", "LW", "NWS"
+  ]
+}

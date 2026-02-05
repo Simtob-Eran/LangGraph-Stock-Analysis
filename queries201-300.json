@@ -1,0 +1,14 @@
+{
+  "queries": [
+    "O", "BKR", "F", "IDXX", "ZTS", "MPWR", "CMG", "D", "PYPL", "AME",
+    "MPC", "EA", "ALL", "FAST", "CBRE", "GWW", "CAH", "MET", "WDAY", "CTVA",
+    "OKE", "PSA", "DDOG", "AXON", "CARR", "EW", "ROK", "TGT", "AMP", "FANG",
+    "TTWO", "XEL", "EXC", "OXY", "MCHP", "DAL", "EBAY", "YUM", "ETR", "DHI",
+    "TRGP", "EL", "LVS", "IQV", "CTSH", "FIX", "MSCI", "PEG", "SYY", "ROP",
+    "AIG", "WAB", "GRMN", "VMC", "KR", "NUE", "CPRT", "TER", "MLM", "HSY",
+    "A", "ED", "CCI", "KEYS", "CCL", "PAYX", "PRU", "RMD", "KDP", "FICO",
+    "GEHC", "ODFL", "HIG", "WEC", "FISV", "STT", "VTR", "OTIS", "IR", "LYV",
+    "XYL", "ACGL", "UAL", "IBKR", "FITB", "EQT", "KMB", "MTB", "RJF", "KVUE",
+    "PCG", "ADM", "ARES", "EXPE", "DG", "EME", "ROL", "VICI", "WTW", "VRSK"
+  ]
+}
