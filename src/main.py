@@ -191,7 +191,7 @@ async def run_batch_analysis(queries_file: str = "queries.json", use_oauth: bool
             scope=scope,
             client_name=settings.OAUTH_CLIENT_NAME,
         )
-        set_oauth_auth(oauth_provider)
+        set_oauth_auth(oauth_provider, mcp_url=mcp_url)
         print("[INFO] OAuth provider configured. Authentication will occur on first MCP call.")
         print()
 
