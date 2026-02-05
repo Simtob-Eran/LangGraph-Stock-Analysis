@@ -15,6 +15,7 @@ import os
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from contextlib import asynccontextmanager
+from urllib.parse import parse_qs, urlparse
 import yfinance as yf
 from datetime import datetime
 from src.utils.logger import setup_logger
@@ -23,10 +24,83 @@ from src.utils.logger import setup_logger
 try:
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
+    from mcp.client.auth import OAuthClientProvider, TokenStorage
+    from mcp.shared.auth import (
+        OAuthClientMetadata,
+        OAuthClientInformationFull,
+        OAuthToken,
+        AnyUrl,
+    )
     MCP_AVAILABLE = True
+    OAUTH_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
+    OAUTH_AVAILABLE = False
     print("⚠️ MCP library not installed. Using direct yfinance only.")
+
+
+# ---------------- OAuth helpers ----------------
+
+async def handle_redirect(auth_url: str) -> None:
+    """Display the authorization URL for the user to visit."""
+    print(f"\n{'='*60}")
+    print("🔐 OAuth Authentication Required")
+    print(f"{'='*60}")
+    print(f"\nVisit this URL to authorize:\n")
+    print(f"{auth_url}")
+    print(f"\n{'='*60}\n")
+
+
+async def handle_callback() -> tuple[str, str | None]:
+    """Wait for user to paste the callback URL after authorization."""
+    print("After authorizing, paste the callback URL here:")
+    callback_url = input("Callback URL: ").strip()
+    params = parse_qs(urlparse(callback_url).query)
+    code = params.get("code", [None])[0]
+    state = params.get("state", [None])[0]
+    if not code:
+        raise ValueError("No authorization code found in callback URL")
+    return code, state
+
+
+class InMemoryTokenStorage(TokenStorage):
+    """In-memory storage for OAuth tokens."""
+
+    def __init__(self):
+        self.tokens: OAuthToken | None = None
+        self.client_info: OAuthClientInformationFull | None = None
+
+    async def get_tokens(self) -> OAuthToken | None:
+        return self.tokens
+
+    async def set_tokens(self, tokens: OAuthToken) -> None:
+        self.tokens = tokens
+
+    async def get_client_info(self) -> OAuthClientInformationFull | None:
+        return self.client_info
+
+    async def set_client_info(self, client_info: OAuthClientInformationFull) -> None:
+        self.client_info = client_info
+
+
+def create_oauth_provider(mcp_url: str, redirect_uri: str, scope: str, client_name: str) -> OAuthClientProvider:
+    """Create an OAuth provider for MCP authentication."""
+    if not OAUTH_AVAILABLE:
+        raise RuntimeError("OAuth not available - MCP library not installed")
+
+    return OAuthClientProvider(
+        server_url=mcp_url,
+        client_metadata=OAuthClientMetadata(
+            client_name=client_name,
+            redirect_uris=[AnyUrl(redirect_uri)],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+            scope=scope,
+        ),
+        storage=InMemoryTokenStorage(),
+        redirect_handler=handle_redirect,
+        callback_handler=handle_callback,
+    )
 
 logger = setup_logger("mcp.yfinance")
 
@@ -58,11 +132,18 @@ class YahooFinanceMCPClient:
     Discovers available tools dynamically and maps arguments correctly.
     """
 
-    def __init__(self):
-        """Initialize Yahoo Finance MCP client."""
+    def __init__(self, oauth_auth: Optional[OAuthClientProvider] = None):
+        """Initialize Yahoo Finance MCP client.
+
+        Args:
+            oauth_auth: Optional OAuth provider for authenticated MCP connections.
+        """
         self.logger = logger
         self.mcp_config = self._load_mcp_config()
         self.fallback_enabled = self.mcp_config.get("fallbackStrategy", {}).get("enabled", True)
+
+        # OAuth authentication
+        self.oauth_auth = oauth_auth
 
         # Tool discovery cache
         self._available_tools: Dict[str, Any] = {}
@@ -89,10 +170,11 @@ class YahooFinanceMCPClient:
         print(f"MCP Available: {MCP_AVAILABLE}")
         print(f"MCP URL: {self.mcp_url}")
         print(f"Source: {'Environment Variable' if os.getenv('MCP_URL') else 'Config File'}")
+        print(f"OAuth Enabled: {self.oauth_auth is not None}")
         print(f"Fallback enabled: {self.fallback_enabled}")
         print(f"{'='*60}\n")
 
-        self.logger.info(f"Initialized MCP client - URL: {self.mcp_url}")
+        self.logger.info(f"Initialized MCP client - URL: {self.mcp_url}, OAuth: {self.oauth_auth is not None}")
 
     def _load_mcp_config(self) -> Dict[str, Any]:
         """Load MCP configuration from config file."""
@@ -143,55 +225,73 @@ class YahooFinanceMCPClient:
 
     @asynccontextmanager
     async def _get_mcp_session(self):
-        """Create and manage MCP session with proper streaming."""
+        """Create and manage MCP session with proper streaming.
+
+        Supports both standard headers-based auth and OAuth authentication.
+        """
         if not MCP_AVAILABLE or not self.mcp_url:
             yield None
             return
 
         try:
-            async with streamablehttp_client(
-                self.mcp_url,
-                headers=self.mcp_headers
-            ) as (read, write, _):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-
-                    # Discover tools if not already done
-                    if not self._tools_discovered:
-                        tools_result = await session.list_tools()
-                        tools = tools_result.tools if hasattr(tools_result, 'tools') else []
-
-                        print(f"\n{'='*60}")
-                        print(f"📦 DISCOVERED {len(tools)} MCP TOOLS:")
-                        print(f"{'='*60}")
-
-                        for tool in tools:
-                            tool_name = tool.name if hasattr(tool, 'name') else str(tool)
-                            tool_desc = tool.description if hasattr(tool, 'description') else ""
-                            input_schema = tool.inputSchema if hasattr(tool, 'inputSchema') else {}
-
-                            self._available_tools[tool_name] = {
-                                "name": tool_name,
-                                "description": tool_desc,
-                                "inputSchema": input_schema
-                            }
-
-                            # Show tool info
-                            props = input_schema.get("properties", {})
-                            args_list = list(props.keys())
-                            print(f"  • {tool_name}")
-                            if args_list:
-                                print(f"    Args: {', '.join(args_list)}")
-
-                        print(f"{'='*60}\n")
-                        self._tools_discovered = True
-
-                    yield session
+            # Use OAuth if configured, otherwise use headers
+            if self.oauth_auth:
+                print("🔐 Using OAuth authentication...")
+                async with streamablehttp_client(
+                    self.mcp_url,
+                    auth=self.oauth_auth
+                ) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        await self._discover_tools(session)
+                        yield session
+            else:
+                async with streamablehttp_client(
+                    self.mcp_url,
+                    headers=self.mcp_headers
+                ) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        await self._discover_tools(session)
+                        yield session
 
         except Exception as e:
             print(f"❌ MCP Connection Error: {e}")
             self.logger.error(f"MCP session error: {e}")
             yield None
+
+    async def _discover_tools(self, session: ClientSession):
+        """Discover available MCP tools."""
+        if self._tools_discovered:
+            return
+
+        tools_result = await session.list_tools()
+        tools = tools_result.tools if hasattr(tools_result, 'tools') else []
+
+        print(f"\n{'='*60}")
+        print(f"📦 DISCOVERED {len(tools)} MCP TOOLS:")
+        print(f"{'='*60}")
+
+        for tool in tools:
+            tool_name = tool.name if hasattr(tool, 'name') else str(tool)
+            tool_desc = tool.description if hasattr(tool, 'description') else ""
+            input_schema = tool.inputSchema if hasattr(tool, 'inputSchema') else {}
+
+            self._available_tools[tool_name] = {
+                "name": tool_name,
+                "description": tool_desc,
+                "inputSchema": input_schema
+            }
+
+            # Show tool info
+            props = input_schema.get("properties", {})
+            args_list = list(props.keys())
+            print(f"  • {tool_name}")
+            if args_list:
+                print(f"    Args: {', '.join(args_list)}")
+
+        print(f"{'='*60}\n")
+        self._tools_discovered = True
 
     async def _call_mcp_tool(
         self,
@@ -546,11 +646,23 @@ class YahooFinanceMCPClient:
 
 # Singleton instance
 _client = None
+_oauth_auth = None
+
+
+def set_oauth_auth(oauth_auth: OAuthClientProvider) -> None:
+    """Set the OAuth provider for the MCP client.
+
+    Must be called before get_yfinance_client() if OAuth is needed.
+    """
+    global _oauth_auth, _client
+    _oauth_auth = oauth_auth
+    # Reset client so it will be recreated with OAuth
+    _client = None
 
 
 def get_yfinance_client() -> YahooFinanceMCPClient:
     """Get or create Yahoo Finance MCP client singleton."""
     global _client
     if _client is None:
-        _client = YahooFinanceMCPClient()
+        _client = YahooFinanceMCPClient(oauth_auth=_oauth_auth)
     return _client
