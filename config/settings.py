@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     MCP_URL: Optional[str] = None
     MCP_YFINANCE_ENABLED: bool = True
 
+    # OAuth Settings (for MCP authentication)
+    OAUTH_REDIRECT_URI: str = "https://cbg-obot.com/"
+    OAUTH_SCOPE: str = "user repo"
+    OAUTH_CLIENT_NAME: str = "Stock Analysis MCP Agent"
+
     class Config:
         """Pydantic configuration."""
         env_file = ".env"

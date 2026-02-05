@@ -3,6 +3,9 @@ python-dotenv>=1.0.1,<2.0.0
 pydantic>=2.10.3,<3.0.0
 pydantic-settings>=2.7.0,<3.0.0
 
+# MCP (Model Context Protocol)
+mcp>=1.0.0
+
 # AI/ML - Updated to latest 2026 versions
 openai>=1.57.0,<2.0.0
 langgraph>=0.2.45,<0.3.0

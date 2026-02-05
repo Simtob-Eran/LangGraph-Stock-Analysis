@@ -9,6 +9,11 @@ from datetime import datetime
 from src.orchestrator import Orchestrator
 from src.utils.logger import setup_logger
 from config.settings import settings
+from src.mcp.yfinance_client import (
+    create_oauth_provider,
+    set_oauth_auth,
+    OAUTH_AVAILABLE,
+)
 
 logger = setup_logger("main")
 
@@ -146,16 +151,47 @@ async def run_analysis(query: str, output_file: str = None, json_output: bool = 
         return 1
 
 
-async def run_batch_analysis(queries_file: str = "queries.json"):
+async def run_batch_analysis(queries_file: str = "queries.json", use_oauth: bool = False):
     """
     Run batch analysis from queries.json file.
 
     Args:
         queries_file: Path to queries JSON file
+        use_oauth: Whether to use OAuth authentication for MCP
 
     Returns:
         Exit code (0 for success, 1 for failure)
     """
+    # Setup OAuth if requested
+    if use_oauth:
+        if not OAUTH_AVAILABLE:
+            print("[ERROR] OAuth not available - MCP library not installed")
+            return 1
+
+        mcp_url = settings.MCP_URL
+        if not mcp_url:
+            print("[ERROR] MCP_URL not configured. Set MCP_URL in .env file")
+            return 1
+
+        print("=" * 80)
+        print("OAUTH AUTHENTICATION")
+        print("=" * 80)
+        print(f"MCP URL: {mcp_url}")
+        print(f"Redirect URI: {settings.OAUTH_REDIRECT_URI}")
+        print(f"Scope: {settings.OAUTH_SCOPE}")
+        print("=" * 80)
+        print()
+
+        oauth_provider = create_oauth_provider(
+            mcp_url=mcp_url,
+            redirect_uri=settings.OAUTH_REDIRECT_URI,
+            scope=settings.OAUTH_SCOPE,
+            client_name=settings.OAUTH_CLIENT_NAME,
+        )
+        set_oauth_auth(oauth_provider)
+        print("[INFO] OAuth provider configured. Authentication will occur on first MCP call.")
+        print()
+
     queries_path = Path(queries_file)
 
     if not queries_path.exists():
@@ -253,6 +289,9 @@ Examples:
   # Run batch analysis from custom file
   python -m src.main batch -f my_queries.json
 
+  # Run batch analysis with OAuth authentication
+  python -m src.main batch --oauth
+
 For more information, see README.md
         """
     )
@@ -285,6 +324,11 @@ For more information, see README.md
         default="queries.json",
         help="Path to queries JSON file (default: queries.json)"
     )
+    batch_parser.add_argument(
+        "--oauth",
+        action="store_true",
+        help="Use OAuth authentication for MCP server"
+    )
 
     # Parse arguments
     args = parser.parse_args()
@@ -305,7 +349,8 @@ For more information, see README.md
 
     if args.command == "batch":
         return asyncio.run(run_batch_analysis(
-            queries_file=args.file
+            queries_file=args.file,
+            use_oauth=args.oauth
         ))
 
     return 0
