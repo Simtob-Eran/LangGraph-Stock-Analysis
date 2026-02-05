@@ -102,6 +102,42 @@ def create_oauth_provider(mcp_url: str, redirect_uri: str, scope: str, client_na
         callback_handler=handle_callback,
     )
 
+
+async def pre_authenticate_oauth(mcp_url: str, oauth_auth: OAuthClientProvider) -> bool:
+    """Pre-authenticate with OAuth before starting batch processing.
+
+    This ensures the OAuth flow completes before we start the analysis,
+    so the user can enter the callback URL interactively.
+
+    Args:
+        mcp_url: The MCP server URL.
+        oauth_auth: The OAuth provider.
+
+    Returns:
+        True if authentication succeeded, False otherwise.
+    """
+    if not MCP_AVAILABLE:
+        return False
+
+    print("\n" + "=" * 60)
+    print("🔐 Starting OAuth Authentication...")
+    print("=" * 60 + "\n")
+
+    try:
+        async with streamablehttp_client(
+            mcp_url,
+            auth=oauth_auth
+        ) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                print("\n✅ OAuth authentication successful!")
+                print("=" * 60 + "\n")
+                return True
+    except Exception as e:
+        print(f"\n❌ OAuth authentication failed: {e}")
+        print("=" * 60 + "\n")
+        return False
+
 logger = setup_logger("mcp.yfinance")
 
 
@@ -132,11 +168,12 @@ class YahooFinanceMCPClient:
     Discovers available tools dynamically and maps arguments correctly.
     """
 
-    def __init__(self, oauth_auth: Optional[OAuthClientProvider] = None):
+    def __init__(self, oauth_auth: Optional[OAuthClientProvider] = None, mcp_url: Optional[str] = None):
         """Initialize Yahoo Finance MCP client.
 
         Args:
             oauth_auth: Optional OAuth provider for authenticated MCP connections.
+            mcp_url: Optional MCP URL to use (overrides config/env when OAuth is enabled).
         """
         self.logger = logger
         self.mcp_config = self._load_mcp_config()
@@ -149,27 +186,32 @@ class YahooFinanceMCPClient:
         self._available_tools: Dict[str, Any] = {}
         self._tools_discovered = False
 
-        # Priority: Environment variable > Config file
-        self.mcp_url = os.getenv("MCP_URL")
+        # URL Priority when OAuth enabled: provided mcp_url > Environment variable > Config file
+        # URL Priority without OAuth: Environment variable > Config file
         self.mcp_headers = {}
-        self.mcp_name = "env"
+        self.mcp_name = "oauth" if oauth_auth and mcp_url else "env"
 
-        # If no env var, try config file
-        if not self.mcp_url:
-            servers = self.mcp_config.get("mcpServers", {})
-            for name, config in servers.items():
-                if config.get("enabled", True):
-                    self.mcp_url = config.get("url")
-                    self.mcp_headers = config.get("headers", {})
-                    self.mcp_name = name
-                    break
+        if oauth_auth and mcp_url:
+            # When OAuth is enabled, use the OAuth URL
+            self.mcp_url = mcp_url
+        else:
+            # Standard priority: Environment variable > Config file
+            self.mcp_url = os.getenv("MCP_URL")
+            if not self.mcp_url:
+                servers = self.mcp_config.get("mcpServers", {})
+                for name, config in servers.items():
+                    if config.get("enabled", True):
+                        self.mcp_url = config.get("url")
+                        self.mcp_headers = config.get("headers", {})
+                        self.mcp_name = name
+                        break
 
         print(f"\n{'='*60}")
         print(f"🚀 MCP CLIENT INITIALIZED")
         print(f"{'='*60}")
         print(f"MCP Available: {MCP_AVAILABLE}")
         print(f"MCP URL: {self.mcp_url}")
-        print(f"Source: {'Environment Variable' if os.getenv('MCP_URL') else 'Config File'}")
+        print(f"Source: {self.mcp_name}")
         print(f"OAuth Enabled: {self.oauth_auth is not None}")
         print(f"Fallback enabled: {self.fallback_enabled}")
         print(f"{'='*60}\n")
@@ -647,15 +689,21 @@ class YahooFinanceMCPClient:
 # Singleton instance
 _client = None
 _oauth_auth = None
+_oauth_mcp_url = None
 
 
-def set_oauth_auth(oauth_auth: OAuthClientProvider) -> None:
+def set_oauth_auth(oauth_auth: OAuthClientProvider, mcp_url: str = None) -> None:
     """Set the OAuth provider for the MCP client.
 
     Must be called before get_yfinance_client() if OAuth is needed.
+
+    Args:
+        oauth_auth: The OAuth provider to use.
+        mcp_url: The MCP URL to use with OAuth authentication.
     """
-    global _oauth_auth, _client
+    global _oauth_auth, _oauth_mcp_url, _client
     _oauth_auth = oauth_auth
+    _oauth_mcp_url = mcp_url
     # Reset client so it will be recreated with OAuth
     _client = None
 
@@ -664,5 +712,5 @@ def get_yfinance_client() -> YahooFinanceMCPClient:
     """Get or create Yahoo Finance MCP client singleton."""
     global _client
     if _client is None:
-        _client = YahooFinanceMCPClient(oauth_auth=_oauth_auth)
+        _client = YahooFinanceMCPClient(oauth_auth=_oauth_auth, mcp_url=_oauth_mcp_url)
     return _client
