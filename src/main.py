@@ -168,24 +168,27 @@ async def run_batch_analysis(queries_file: str = "queries.json", use_oauth: bool
             print("[ERROR] OAuth not available - MCP library not installed")
             return 1
 
-        mcp_url = settings.MCP_URL
+        mcp_url = settings.get_oauth_url()
         if not mcp_url:
-            print("[ERROR] MCP_URL not configured. Set MCP_URL in .env file")
+            print("[ERROR] MCP URL not configured. Set MCP_OAUTH_GITHUB_URL or MCP_URL in .env file")
             return 1
+
+        redirect_uri = settings.get_oauth_redirect_uri()
+        scope = settings.get_oauth_scope()
 
         print("=" * 80)
         print("OAUTH AUTHENTICATION")
         print("=" * 80)
         print(f"MCP URL: {mcp_url}")
-        print(f"Redirect URI: {settings.OAUTH_REDIRECT_URI}")
-        print(f"Scope: {settings.OAUTH_SCOPE}")
+        print(f"Redirect URI: {redirect_uri}")
+        print(f"Scope: {scope}")
         print("=" * 80)
         print()
 
         oauth_provider = create_oauth_provider(
             mcp_url=mcp_url,
-            redirect_uri=settings.OAUTH_REDIRECT_URI,
-            scope=settings.OAUTH_SCOPE,
+            redirect_uri=redirect_uri,
+            scope=scope,
             client_name=settings.OAUTH_CLIENT_NAME,
         )
         set_oauth_auth(oauth_provider)
