@@ -303,7 +303,7 @@ Query: {query}
 JSON response:"""
 
         try:
-            response = self.openai_client.chat.completions.create(
+            response = await self.openai_client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[{"role": "user", "content": extraction_prompt}],
                 temperature=0,
