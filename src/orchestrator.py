@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 from config.settings import settings
 from src.utils.database import Database
 from src.utils.logger import setup_logger
-from src.utils.validators import parse_query, validate_tickers
+from src.utils.validators import validate_tickers
 from src.agents.data_collector import DataCollectorAgent
 from src.agents.fundamental_analyst import FundamentalAnalystAgent
 from src.agents.technical_analyst import TechnicalAnalystAgent
@@ -25,6 +25,7 @@ logger = setup_logger("orchestrator")
 class AnalysisState(TypedDict):
     """State object for the analysis workflow."""
     ticker: str
+    query: str  # Original user query
     run_id: str
     collected_data: Dict[str, Any]
     fundamental: Dict[str, Any]
@@ -125,7 +126,7 @@ class Orchestrator:
         logger.info(f"[Orchestrator] Collecting data for {state['ticker']}")
 
         result = await self.data_collector.run(
-            {"ticker": state["ticker"]},
+            {"ticker": state["ticker"], "query": state.get("query", "")},
             run_id=state["run_id"]
         )
 
@@ -142,6 +143,7 @@ class Orchestrator:
         result = await self.fundamental_analyst.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "collected_data": state["collected_data"].get("data")
             },
             run_id=state["run_id"]
@@ -160,6 +162,7 @@ class Orchestrator:
         result = await self.technical_analyst.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "collected_data": state["collected_data"].get("data")
             },
             run_id=state["run_id"]
@@ -178,6 +181,7 @@ class Orchestrator:
         result = await self.sentiment_analyst.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "collected_data": state["collected_data"].get("data")
             },
             run_id=state["run_id"]
@@ -200,6 +204,7 @@ class Orchestrator:
         result = await self.debate_agent.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "fundamental": state["fundamental"],
                 "technical": state["technical"],
                 "sentiment": state["sentiment"]
@@ -216,6 +221,7 @@ class Orchestrator:
         result = await self.risk_manager.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "collected_data": state["collected_data"].get("data"),
                 "fundamental": state["fundamental"],
                 "technical": state["technical"],
@@ -233,6 +239,7 @@ class Orchestrator:
         result = await self.synthesis_agent.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "run_id": state["run_id"],
                 "collected_data": state["collected_data"].get("data"),
                 "fundamental": state["fundamental"],
@@ -253,6 +260,7 @@ class Orchestrator:
         result = await self.feedback_loop.run(
             {
                 "ticker": state["ticker"],
+                "query": state.get("query", ""),
                 "collected_data": state["collected_data"].get("data"),
                 "fundamental": state["fundamental"],
                 "technical": state["technical"],
@@ -269,12 +277,69 @@ class Orchestrator:
             "status": "completed"
         }
 
+    async def _extract_tickers_with_llm(self, query: str) -> tuple[list[str], str]:
+        """
+        Extract ticker symbols from query using LLM.
+
+        Args:
+            query: User query in any language
+
+        Returns:
+            Tuple of (tickers, analysis_type)
+        """
+        extraction_prompt = f"""Extract stock ticker symbols from the following query.
+Return ONLY a JSON object with this exact format:
+{{"tickers": ["AAPL", "MSFT"], "analysis_type": "single" or "multiple"}}
+
+Rules:
+- Extract valid US stock ticker symbols (1-5 uppercase letters)
+- If only one ticker, analysis_type is "single"
+- If multiple tickers, analysis_type is "multiple"
+- If no tickers found, return {{"tickers": [], "analysis_type": "none"}}
+- The query may be in any language, extract the ticker regardless
+
+Query: {query}
+
+JSON response:"""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[{"role": "user", "content": extraction_prompt}],
+                temperature=0,
+                max_tokens=100
+            )
+
+            import json
+            result_text = response.choices[0].message.content.strip()
+            # Remove markdown code blocks if present
+            if result_text.startswith("```"):
+                result_text = result_text.split("```")[1]
+                if result_text.startswith("json"):
+                    result_text = result_text[4:]
+                result_text = result_text.strip()
+
+            result = json.loads(result_text)
+            tickers = [t.upper() for t in result.get("tickers", [])]
+            analysis_type = result.get("analysis_type", "single")
+
+            logger.info(f"LLM extracted tickers: {tickers}, type: {analysis_type}")
+            return tickers, analysis_type
+
+        except Exception as e:
+            logger.error(f"LLM ticker extraction failed: {e}")
+            # Fallback: treat entire query as potential ticker if it looks like one
+            query_clean = query.strip().upper()
+            if len(query_clean) <= 5 and query_clean.isalpha():
+                return [query_clean], "single"
+            return [], "none"
+
     async def analyze(self, query: str) -> Dict[str, Any]:
         """
         Main entry point for analysis.
 
         Args:
-            query: User query (e.g., "Analyze AAPL" or "Compare AAPL, MSFT, GOOGL")
+            query: User query in any language (e.g., "Analyze AAPL", "תנתח לי את AAPL")
 
         Returns:
             Analysis result dictionary
@@ -282,8 +347,8 @@ class Orchestrator:
         logger.info(f"Analyzing query: {query}")
         start_time = time.time()
 
-        # Parse query to extract tickers
-        tickers, analysis_type = parse_query(query)
+        # Extract tickers using LLM (supports any language)
+        tickers, analysis_type = await self._extract_tickers_with_llm(query)
 
         if not tickers:
             return {
@@ -341,6 +406,7 @@ class Orchestrator:
             # Initialize state
             initial_state: AnalysisState = {
                 "ticker": ticker,
+                "query": query,  # Pass original query to agents
                 "run_id": run_id,
                 "collected_data": {},
                 "fundamental": {},
