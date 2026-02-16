@@ -56,6 +56,10 @@ async def run_analysis(query: str, output_file: str = None, json_output: bool = 
     print("[INFO] Initializing orchestrator...")
     orchestrator = Orchestrator()
 
+    # Load MCP tools and create autonomous agents
+    print("[INFO] Loading MCP tools and creating agents...")
+    await orchestrator.initialize()
+
     # Run analysis
     print(f"[INFO] Starting analysis...")
     print()

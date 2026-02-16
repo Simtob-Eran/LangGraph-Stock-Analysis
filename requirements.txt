@@ -5,6 +5,7 @@ pydantic-settings>=2.7.0,<3.0.0
 
 # MCP (Model Context Protocol)
 mcp>=1.0.0
+langchain-mcp-adapters>=0.1.0
 
 # AI/ML - Updated to latest 2026 versions
 openai>=1.57.0,<2.0.0

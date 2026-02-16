@@ -1,23 +1,20 @@
-"""Main orchestrator coordinating all agents using LangGraph."""
+"""Main orchestrator coordinating autonomous agents using LangGraph."""
 
 import asyncio
+import json
+import re
 import time
 import uuid
-from typing import Dict, Any, List, TypedDict, Annotated
+from typing import Dict, Any, List, TypedDict, Optional
 from langgraph.graph import StateGraph, END
 from openai import AsyncOpenAI
 from config.settings import settings
 from src.utils.database import Database
 from src.utils.logger import setup_logger
 from src.utils.validators import validate_tickers
+from src.mcp.mcp_client_factory import create_mcp_client
+from src.agents.agent_factory import create_all_agents
 from src.agents.data_collector import DataCollectorAgent
-from src.agents.fundamental_analyst import FundamentalAnalystAgent
-from src.agents.technical_analyst import TechnicalAnalystAgent
-from src.agents.sentiment_analyst import SentimentAnalystAgent
-from src.agents.debate_agent import DebateAgent
-from src.agents.risk_manager import RiskManagerAgent
-from src.agents.synthesis_agent import SynthesisAgent
-from src.agents.feedback_loop import FeedbackLoopAgent
 
 logger = setup_logger("orchestrator")
 
@@ -43,35 +40,66 @@ class Orchestrator:
     """
     Main orchestrator for stock analysis system.
 
-    Coordinates all agents using LangGraph for workflow management.
-    Handles both sequential (deep) and parallel (multiple stocks) analysis.
+    Coordinates autonomous agents using LangGraph for workflow management.
+    Each specialist agent independently fetches data via MCP tools using
+    create_agent's ReAct loop.
     """
 
     def __init__(self):
-        """Initialize orchestrator with all agents."""
-        logger.info(f"Initializing Stock Analysis Orchestrator")
+        """Initialize orchestrator (lightweight -- call initialize() before analyze)."""
+        logger.info("Initializing Stock Analysis Orchestrator")
         logger.info(f"OpenAI Model: {settings.OPENAI_MODEL}")
 
-        # Initialize OpenAI client
+        # Initialize OpenAI client (still used for ticker extraction)
         self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
         # Initialize database
         self.db = Database()
 
-        # Initialize all agents
+        # Data collector for ticker validation (uses existing YahooFinanceMCPClient)
         self.data_collector = DataCollectorAgent(self.openai_client, self.db)
-        self.fundamental_analyst = FundamentalAnalystAgent(self.openai_client, self.db)
-        self.technical_analyst = TechnicalAnalystAgent(self.openai_client, self.db)
-        self.sentiment_analyst = SentimentAnalystAgent(self.openai_client, self.db)
-        self.debate_agent = DebateAgent(self.openai_client, self.db)
-        self.risk_manager = RiskManagerAgent(self.openai_client, self.db)
-        self.synthesis_agent = SynthesisAgent(self.openai_client, self.db)
-        self.feedback_loop = FeedbackLoopAgent(self.openai_client, self.db)
+
+        # These are set during initialize()
+        self.mcp_client = None
+        self.agents: Dict[str, Any] = {}
+        self.workflow = None
+        self._initialized = False
+
+        logger.info("Orchestrator created (call initialize() to load MCP tools)")
+
+    async def initialize(self):
+        """Load MCP tools and create all autonomous agents. Must call before analyze()."""
+        if self._initialized:
+            logger.info("Already initialized, skipping")
+            return
+
+        logger.info("Loading MCP tools and creating agents...")
+
+        self.mcp_client = create_mcp_client()
+
+        if self.mcp_client:
+            try:
+                tools = await self.mcp_client.get_tools()
+                tool_names = [t.name for t in tools]
+                logger.info(f"Loaded {len(tools)} MCP tools: {tool_names}")
+                print(f"Loaded {len(tools)} MCP tools: {tool_names}")
+            except Exception as e:
+                logger.error(f"Failed to load MCP tools: {e}")
+                print(f"Warning: Failed to load MCP tools: {e}")
+                tools = []
+        else:
+            tools = []
+            logger.warning("No MCP available -- agents will run without live data tools")
+            print("Warning: No MCP available -- agents will run without live data tools")
+
+        self.agents = create_all_agents(tools)
 
         # Build workflow graph
         self.workflow = self._build_workflow()
 
-        logger.info("Orchestrator initialized successfully")
+        self._initialized = True
+        logger.info(f"{len(self.agents)} autonomous agents ready")
+        print(f"{len(self.agents)} autonomous agents ready")
 
     def _build_workflow(self) -> StateGraph:
         """
@@ -121,9 +149,74 @@ class Orchestrator:
         # Compile the graph
         return workflow.compile()
 
+    # ------------------------------------------------------------------
+    # Agent invocation helpers
+    # ------------------------------------------------------------------
+
+    async def _invoke_agent(self, agent_name: str, user_message: str) -> dict:
+        """Invoke a create_agent agent and parse its JSON output."""
+        agent = self.agents[agent_name]
+
+        try:
+            result = await agent.ainvoke({
+                "messages": [{"role": "user", "content": user_message}]
+            })
+
+            # Final agent message is in result["messages"][-1]
+            final_content = result["messages"][-1].content
+
+            # Try to parse JSON from the response
+            return self._extract_json(final_content)
+
+        except Exception as e:
+            logger.error(f"Agent {agent_name} failed: {e}")
+            return {
+                "error": str(e),
+                "score": 5.0,
+                "confidence": 0.0,
+                "recommendation": "hold",
+                "reasoning": f"Agent failed: {e}"
+            }
+
+    def _extract_json(self, content: str) -> dict:
+        """Extract JSON dict from agent response text."""
+        # Try direct parse
+        try:
+            return json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Try ```json ... ``` block
+        match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try any { ... } block
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback -- return raw text as reasoning
+        return {
+            "reasoning": content,
+            "score": 5.0,
+            "confidence": 0.3,
+            "recommendation": "hold"
+        }
+
+    # ------------------------------------------------------------------
+    # Workflow nodes -- each invokes an autonomous agent
+    # ------------------------------------------------------------------
+
     async def _collect_data_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for data collection."""
-        logger.info(f"[Orchestrator] Collecting data for {state['ticker']}")
+        """Node for data collection / ticker validation."""
+        logger.info(f"[Orchestrator] Validating ticker {state['ticker']}")
 
         result = await self.data_collector.run(
             {"ticker": state["ticker"], "query": state.get("query", "")},
@@ -133,149 +226,254 @@ class Orchestrator:
         return {"collected_data": result}
 
     async def _analyze_fundamental_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for fundamental analysis."""
-        logger.info(f"[Orchestrator] Running fundamental analysis for {state['ticker']}")
+        """Node for fundamental analysis -- autonomous agent fetches its own data."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Running autonomous fundamental analysis for {ticker}")
 
-        # Wait for data collection to complete
-        while not state.get("collected_data"):
-            await asyncio.sleep(0.1)
+        analysis = await self._invoke_agent(
+            "fundamental_analyst",
+            f"""Perform a complete fundamental analysis for stock ticker: {ticker}
 
-        result = await self.fundamental_analyst.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "collected_data": state["collected_data"].get("data")
-            },
-            run_id=state["run_id"]
+Use your available MCP tools to fetch all financial data you need.
+Return your analysis as JSON in the required format."""
         )
 
-        return {"fundamental": result}
+        return {"fundamental": analysis}
 
     async def _analyze_technical_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for technical analysis."""
-        logger.info(f"[Orchestrator] Running technical analysis for {state['ticker']}")
+        """Node for technical analysis -- autonomous agent fetches its own data."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Running autonomous technical analysis for {ticker}")
 
-        # Wait for data collection to complete
-        while not state.get("collected_data"):
-            await asyncio.sleep(0.1)
+        analysis = await self._invoke_agent(
+            "technical_analyst",
+            f"""Perform a complete technical analysis for stock ticker: {ticker}
 
-        result = await self.technical_analyst.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "collected_data": state["collected_data"].get("data")
-            },
-            run_id=state["run_id"]
+Use your available MCP tools to fetch 2 years of daily price history.
+Calculate all indicators and return your analysis as JSON in the required format."""
         )
 
-        return {"technical": result}
+        return {"technical": analysis}
 
     async def _analyze_sentiment_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for sentiment analysis."""
-        logger.info(f"[Orchestrator] Running sentiment analysis for {state['ticker']}")
+        """Node for sentiment analysis -- autonomous agent fetches its own data."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Running autonomous sentiment analysis for {ticker}")
 
-        # Wait for data collection to complete
-        while not state.get("collected_data"):
-            await asyncio.sleep(0.1)
+        analysis = await self._invoke_agent(
+            "sentiment_analyst",
+            f"""Perform a complete sentiment analysis for stock ticker: {ticker}
 
-        result = await self.sentiment_analyst.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "collected_data": state["collected_data"].get("data")
-            },
-            run_id=state["run_id"]
+Use your available MCP tools to fetch recent news (at least 10 articles).
+Return your analysis as JSON in the required format."""
         )
 
-        return {"sentiment": result}
+        return {"sentiment": analysis}
 
     async def _create_debate_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for debate creation."""
-        logger.info(f"[Orchestrator] Creating investment debate for {state['ticker']}")
+        """Node for debate creation -- agent receives prior analyses."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Creating investment debate for {ticker}")
 
-        # Wait for all three analyses to complete
-        while not all([
-            state.get("fundamental"),
-            state.get("technical"),
-            state.get("sentiment")
-        ]):
-            await asyncio.sleep(0.1)
+        fundamental = state.get("fundamental", {})
+        technical = state.get("technical", {})
+        sentiment = state.get("sentiment", {})
 
-        result = await self.debate_agent.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "fundamental": state["fundamental"],
-                "technical": state["technical"],
-                "sentiment": state["sentiment"]
-            },
-            run_id=state["run_id"]
+        debate = await self._invoke_agent(
+            "debate_agent",
+            f"""Create a bull vs bear debate for: {ticker}
+
+FUNDAMENTAL ANALYSIS:
+{json.dumps(fundamental, indent=2, default=str)}
+
+TECHNICAL ANALYSIS:
+{json.dumps(technical, indent=2, default=str)}
+
+SENTIMENT ANALYSIS:
+{json.dumps(sentiment, indent=2, default=str)}
+
+Build the strongest bull and bear cases, resolve conflicts, provide final verdict.
+Return your analysis as JSON in the required format."""
         )
 
-        return {"debate": result}
+        return {"debate": debate}
 
     async def _assess_risk_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for risk assessment."""
-        logger.info(f"[Orchestrator] Assessing risk for {state['ticker']}")
+        """Node for risk assessment -- autonomous agent fetches its own data."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Running autonomous risk assessment for {ticker}")
 
-        result = await self.risk_manager.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "collected_data": state["collected_data"].get("data"),
-                "fundamental": state["fundamental"],
-                "technical": state["technical"],
-                "sentiment": state["sentiment"]
-            },
-            run_id=state["run_id"]
+        analysis = await self._invoke_agent(
+            "risk_manager",
+            f"""Perform a comprehensive risk assessment for stock ticker: {ticker}
+
+Use your available MCP tools to fetch financial data for risk analysis.
+Return your assessment as JSON in the required format."""
         )
 
-        return {"risk": result}
+        return {"risk": analysis}
 
     async def _synthesize_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for synthesis and report generation."""
-        logger.info(f"[Orchestrator] Synthesizing final report for {state['ticker']}")
+        """Node for synthesis -- agent receives all prior analyses."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Synthesizing final report for {ticker}")
 
-        result = await self.synthesis_agent.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "run_id": state["run_id"],
-                "collected_data": state["collected_data"].get("data"),
-                "fundamental": state["fundamental"],
-                "technical": state["technical"],
-                "sentiment": state["sentiment"],
-                "debate": state["debate"],
-                "risk": state["risk"]
-            },
-            run_id=state["run_id"]
+        fundamental = state.get("fundamental", {})
+        technical = state.get("technical", {})
+        sentiment = state.get("sentiment", {})
+        debate = state.get("debate", {})
+        risk = state.get("risk", {})
+
+        synthesis_result = await self._invoke_agent(
+            "synthesis_agent",
+            f"""Create the final comprehensive analysis report for: {ticker}
+
+FUNDAMENTAL ANALYSIS:
+{json.dumps(fundamental, indent=2, default=str)}
+
+TECHNICAL ANALYSIS:
+{json.dumps(technical, indent=2, default=str)}
+
+SENTIMENT ANALYSIS:
+{json.dumps(sentiment, indent=2, default=str)}
+
+DEBATE ANALYSIS:
+{json.dumps(debate, indent=2, default=str)}
+
+RISK ASSESSMENT:
+{json.dumps(risk, indent=2, default=str)}
+
+Produce the full markdown report in the required format.
+Also provide a JSON summary with overall_score, recommendation, and key metrics."""
         )
 
-        return {"synthesis": result}
+        # The synthesis agent returns markdown -- wrap it for compatibility
+        # with the existing main.py report extraction logic
+        markdown_report = synthesis_result.get("reasoning", "")
+        if not markdown_report or markdown_report == synthesis_result.get("recommendation", ""):
+            # Agent likely returned the report as the full response text
+            markdown_report = synthesis_result.get("markdown_report", str(synthesis_result))
+
+        # Calculate overall score from sub-analyses for backward compatibility
+        overall_score = self._calculate_overall_score(fundamental, technical, sentiment, risk)
+        final_recommendation = debate.get("final_recommendation",
+                                          synthesis_result.get("recommendation", "hold"))
+
+        # Save to database
+        report_id = str(uuid.uuid4())
+        try:
+            self.db.save_report(
+                report_id=report_id,
+                run_id=state.get("run_id", report_id),
+                ticker=ticker,
+                overall_score=overall_score,
+                recommendation=final_recommendation,
+                markdown_report=markdown_report,
+                json_data=synthesis_result
+            )
+            saved_to_db = True
+        except Exception as e:
+            logger.error(f"Failed to save report to database: {e}")
+            saved_to_db = False
+
+        return {
+            "synthesis": {
+                "report_id": report_id,
+                "ticker": ticker,
+                "overall_score": overall_score,
+                "recommendation": final_recommendation,
+                "markdown_report": markdown_report,
+                "json_summary": synthesis_result,
+                "saved_to_db": saved_to_db,
+                "confidence": synthesis_result.get("confidence", 0.8),
+                "reasoning": "Comprehensive report generated by autonomous agents"
+            }
+        }
 
     async def _feedback_loop_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for feedback loop."""
-        logger.info(f"[Orchestrator] Running feedback loop for {state['ticker']}")
+        """Node for feedback loop -- QA agent reviews all outputs."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Running feedback loop for {ticker}")
 
-        result = await self.feedback_loop.run(
-            {
-                "ticker": state["ticker"],
-                "query": state.get("query", ""),
-                "collected_data": state["collected_data"].get("data"),
-                "fundamental": state["fundamental"],
-                "technical": state["technical"],
-                "sentiment": state["sentiment"],
-                "debate": state["debate"],
-                "risk": state["risk"],
-                "synthesis": state["synthesis"]
-            },
-            run_id=state["run_id"]
+        fundamental = state.get("fundamental", {})
+        technical = state.get("technical", {})
+        sentiment = state.get("sentiment", {})
+        debate = state.get("debate", {})
+        risk = state.get("risk", {})
+        synthesis = state.get("synthesis", {})
+
+        feedback = await self._invoke_agent(
+            "feedback_loop",
+            f"""Review the complete analysis for: {ticker}
+
+FUNDAMENTAL ANALYSIS:
+{json.dumps(fundamental, indent=2, default=str)}
+
+TECHNICAL ANALYSIS:
+{json.dumps(technical, indent=2, default=str)}
+
+SENTIMENT ANALYSIS:
+{json.dumps(sentiment, indent=2, default=str)}
+
+DEBATE:
+{json.dumps(debate, indent=2, default=str)}
+
+RISK ASSESSMENT:
+{json.dumps(risk, indent=2, default=str)}
+
+SYNTHESIS SUMMARY:
+Overall Score: {synthesis.get('overall_score', 'N/A')}
+Recommendation: {synthesis.get('recommendation', 'N/A')}
+
+Review all analyses for quality, completeness, and consistency.
+Return your QA assessment as JSON in the required format."""
         )
 
         return {
-            "feedback": result,
+            "feedback": feedback,
             "status": "completed"
         }
+
+    # ------------------------------------------------------------------
+    # Scoring helper (backward compatibility with existing report display)
+    # ------------------------------------------------------------------
+
+    def _calculate_overall_score(
+        self,
+        fundamental: Dict[str, Any],
+        technical: Dict[str, Any],
+        sentiment: Dict[str, Any],
+        risk: Dict[str, Any]
+    ) -> float:
+        """Calculate weighted overall score from sub-analyses."""
+        fund_score = float(fundamental.get("score", 5.0))
+
+        # Technical: use score directly if available, else infer from trend
+        tech_score = float(technical.get("score", 5.0))
+
+        # Sentiment: normalize from [-1, +1] to [0, 10]
+        sent_raw = sentiment.get("sentiment_score", 0.0)
+        try:
+            sentiment_score = (float(sent_raw) + 1) * 5
+        except (TypeError, ValueError):
+            sentiment_score = 5.0
+
+        # Risk: invert (lower risk = higher contribution)
+        risk_raw = float(risk.get("risk_score", 5.0))
+        risk_score = 10 - risk_raw
+
+        overall = (
+            fund_score * 0.35 +
+            tech_score * 0.25 +
+            sentiment_score * 0.20 +
+            risk_score * 0.20
+        )
+
+        return max(0.0, min(10.0, round(overall, 1)))
+
+    # ------------------------------------------------------------------
+    # Ticker extraction and analysis entry points (unchanged)
+    # ------------------------------------------------------------------
 
     async def _extract_tickers_with_llm(self, query: str) -> tuple[list[str], str]:
         """
@@ -310,7 +508,6 @@ JSON response:"""
                 max_tokens=100
             )
 
-            import json
             result_text = response.choices[0].message.content.strip()
             # Remove markdown code blocks if present
             if result_text.startswith("```"):
@@ -339,11 +536,15 @@ JSON response:"""
         Main entry point for analysis.
 
         Args:
-            query: User query in any language (e.g., "Analyze AAPL", "תנתח לי את AAPL")
+            query: User query in any language (e.g., "Analyze AAPL")
 
         Returns:
             Analysis result dictionary
         """
+        # Ensure initialized
+        if not self._initialized:
+            await self.initialize()
+
         logger.info(f"Analyzing query: {query}")
         start_time = time.time()
 
@@ -406,7 +607,7 @@ JSON response:"""
             # Initialize state
             initial_state: AnalysisState = {
                 "ticker": ticker,
-                "query": query,  # Pass original query to agents
+                "query": query,
                 "run_id": run_id,
                 "collected_data": {},
                 "fundamental": {},
