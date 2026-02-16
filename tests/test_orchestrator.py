@@ -9,9 +9,7 @@ from src.orchestrator import Orchestrator
 @pytest.fixture
 def mock_orchestrator():
     """Create orchestrator with mocked components."""
-    with patch('src.orchestrator.AsyncOpenAI'), \
-         patch('src.orchestrator.Database'), \
-         patch('src.orchestrator.DataCollectorAgent'):
+    with patch('src.orchestrator.Database'):
         orchestrator = Orchestrator()
         return orchestrator
 
@@ -37,6 +35,8 @@ async def test_orchestrator_initialize(mock_orchestrator):
         mock_create_mcp.return_value = mock_client
 
         mock_agents = {
+            "data_collector": MagicMock(),
+            "orchestrator": MagicMock(),
             "fundamental_analyst": MagicMock(),
             "technical_analyst": MagicMock(),
             "sentiment_analyst": MagicMock(),
@@ -185,7 +185,7 @@ def test_calculate_overall_score(mock_orchestrator):
 async def test_analyze_auto_initializes(mock_orchestrator):
     """Test that analyze() calls initialize() if not yet initialized."""
     with patch.object(mock_orchestrator, 'initialize', new_callable=AsyncMock) as mock_init, \
-         patch.object(mock_orchestrator, '_extract_tickers_with_llm',
+         patch.object(mock_orchestrator, '_extract_tickers_with_orchestrator_agent',
                       new_callable=AsyncMock, return_value=([], "none")):
 
         await mock_orchestrator.analyze("AAPL")
@@ -215,3 +215,75 @@ async def test_parallel_analysis(mock_orchestrator):
 
     assert result["status"] in ["success", "partial"]
     assert "analyses" in result
+
+
+@pytest.mark.asyncio
+async def test_extract_tickers_with_orchestrator_agent(mock_orchestrator):
+    """Test that orchestrator agent extracts tickers from query."""
+    mock_agent = MagicMock()
+    mock_message = MagicMock()
+    mock_message.content = json.dumps({
+        "tickers": ["AAPL", "MSFT"],
+        "analysis_type": "multiple",
+        "query_intent": "comparison",
+        "confidence": 0.95
+    })
+    mock_agent.ainvoke = AsyncMock(return_value={
+        "messages": [MagicMock(), mock_message]
+    })
+
+    mock_orchestrator.agents = {"orchestrator": mock_agent}
+
+    tickers, analysis_type = await mock_orchestrator._extract_tickers_with_orchestrator_agent(
+        "Compare AAPL and MSFT"
+    )
+
+    assert tickers == ["AAPL", "MSFT"]
+    assert analysis_type == "multiple"
+
+
+@pytest.mark.asyncio
+async def test_extract_tickers_orchestrator_agent_fallback(mock_orchestrator):
+    """Test fallback when orchestrator agent fails."""
+    mock_agent = MagicMock()
+    mock_agent.ainvoke = AsyncMock(side_effect=Exception("Agent failed"))
+
+    mock_orchestrator.agents = {"orchestrator": mock_agent}
+
+    tickers, analysis_type = await mock_orchestrator._extract_tickers_with_orchestrator_agent(
+        "AAPL"
+    )
+
+    # Should fall back to treating short query as ticker
+    assert tickers == ["AAPL"]
+    assert analysis_type == "single"
+
+
+@pytest.mark.asyncio
+async def test_collect_data_node_uses_agent(mock_orchestrator):
+    """Test that _collect_data_node invokes data_collector agent."""
+    mock_agent = MagicMock()
+    mock_message = MagicMock()
+    mock_message.content = json.dumps({
+        "valid": True,
+        "ticker": "AAPL",
+        "company_name": "Apple Inc.",
+        "confidence": 0.95
+    })
+    mock_agent.ainvoke = AsyncMock(return_value={
+        "messages": [MagicMock(), mock_message]
+    })
+
+    mock_orchestrator.agents = {"data_collector": mock_agent}
+
+    state = {
+        "ticker": "AAPL",
+        "query": "Analyze AAPL",
+        "run_id": "test-123"
+    }
+
+    result = await mock_orchestrator._collect_data_node(state)
+
+    assert "collected_data" in result
+    assert result["collected_data"]["valid"] is True
+    assert result["collected_data"]["company_name"] == "Apple Inc."
