@@ -1,0 +1,22 @@
+{
+  "queries": [
+    "BAC", "BAH", "BALL", "BANC", "BANF", "BANR", "BAP", "BATRA", "BATRK",
+      "BBIO", "BBWI", "BBY", "BC", "BCC", "BCE", "BCO", "BCPC", "BCRX", "BDC",
+      "BDN", "BE", "BECN", "BELFB", "BEN", "BERY", "BFAM", "BFC", "BFH", "BFS",
+      "BG", "BGFV", "BGS", "BHC", "BHE", "BHF", "BIG", "BILI", "BIO", "BIPC",
+      "BITE", "BJ", "BJRI", "BKNG", "BKH", "BKI", "BKU", "BL", "BLBD", "BLDR",
+      "BLFS", "BLK", "BLKB", "BLMN", "BLUE", "BMI", "BMO", "BMRN", "BMY", "BNL",
+      "BOH", "BOOT", "BORR", "BOX", "BPOP", "BR", "BRBR", "BRC", "BRKR", "BRO",
+      "BRP", "BRX", "BSM", "BSX", "BTU", "BURL", "BV", "BWA", "BWXT", "BYD",
+      "BYND", "BZH", "C", "CABO", "CACI", "CADE", "CAE", "CAG", "CAKE", "CAL",
+      "CALM", "CALX", "CAMP", "CAR", "CARG", "CARR", "CARS", "CASA", "CASH",
+      "CASY", "CATY", "CBAY", "CBOE", "CBRL", "CBSH", "CBU", "CC", "CCCS",
+      "CCEP", "CCI", "CCK", "CCL", "CCOI", "CCS", "CCU", "CDAY", "CDE", "CDK",
+      "CDLX", "CDNA", "CDNS", "CDW", "CE", "CECO", "CENT", "CENTA", "CENX",
+      "CERT", "CEVA", "CFFI", "CFFN", "CFG", "CFLT", "CFR", "CG", "CGNX",
+      "CHCO", "CHD", "CHDN", "CHE", "CHEF", "CHGG", "CHH", "CHK", "CHPT", "CHRD",
+      "CHRW", "CHTR", "CHUY", "CIEN", "CIGI", "CINF", "CIVI", "CL", "CLB",
+      "CLF", "CLH", "CLI", "CLNE", "CLPR", "CLS", "CLVT", "CLW", "CLX", "CM",
+      "CMA", "CMC", "CMCO", "CMD", "CME", "CMG", "CMI", "CMP", "CMPR", "CMRE"
+  ]
+}

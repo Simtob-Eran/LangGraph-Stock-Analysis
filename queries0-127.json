@@ -1,0 +1,18 @@
+{
+  "queries": [
+    "ACGL", "ACI", "ACM", "ACT", "ACVA", "ADC", "ADNT", "ADT", "AEE", "AEL",
+    "AEO", "AES", "AFRM", "AGCO", "AGL", "AGM", "AGO", "AGX", "AHH", "AIN",
+    "AIR", "AIT", "AJG", "AKAM", "AKR", "AL", "ALCO", "ALE", "ALEX", "ALG",
+    "ALGM", "ALGT", "ALIT", "ALK", "ALLK", "ALLY", "ALNY", "ALRM", "ALSN",
+    "ALTR", "ALV", "ALX", "AM", "AMBC", "AMBP", "AMCX", "AMED", "AMEH",
+    "AMG", "AMH", "AMKR", "AMN", "AMP", "AMR", "AMRC", "AMSF", "AMTM", "AMWD",
+    "AN", "ANDE", "ANF", "ANGO", "ANIK", "ANIP", "AON", "APA", "APAM",
+    "APG", "APGE", "APLE", "APLS", "APO", "APOG", "APPF", "APPN", "APTV",
+    "AR", "ARCB", "ARCH", "ARCO", "ARHS", "ARIS", "ARLP", "ARMK", "AROC",
+    "ARRY", "ARVN", "ARWR", "ASAN", "ASB", "ASGN", "ASH", "ASO", "ASPN",
+    "ASTE", "ASTH", "ATEN", "ATGE", "ATI", "ATKR", "ATNI", "ATO", "ATR",
+    "ATRC", "ATRI", "ATRO", "ATUS", "AUB", "AVA", "AVAV", "AVNT", "AVT",
+    "AVTR", "AWI", "AWK", "AWR", "AX", "AXL", "AXNX", "AXON", "AXS", "AXTA",
+    "AYI", "AZEK", "AZO", "AZTA", "AZZ"
+  ]
+}
