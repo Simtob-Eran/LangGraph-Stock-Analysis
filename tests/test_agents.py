@@ -3,7 +3,6 @@
 import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from src.agents.data_collector import DataCollectorAgent
 
 
 @pytest.fixture
@@ -26,57 +25,47 @@ def mock_db_client():
     return db
 
 
-class TestDataCollectorAgent:
-    """Tests for Data Collector Agent (ticker validation only)."""
+class TestDataCollectorAsCreateAgent:
+    """Tests for data_collector as a real create_agent agent."""
 
-    @pytest.mark.asyncio
-    async def test_execute_success(self, mock_openai_client, mock_db_client):
-        """Test successful ticker validation."""
-        agent = DataCollectorAgent(mock_openai_client, mock_db_client)
+    def test_data_collector_in_agent_factory(self):
+        """Test that data_collector is registered in agent factory."""
+        from src.agents.agent_factory import create_all_agents
 
-        # Mock yfinance client
-        with patch.object(agent, 'yfinance_client') as mock_yf:
-            mock_yf.get_ticker_info = AsyncMock(return_value={
-                "symbol": "AAPL",
-                "name": "Apple Inc.",
-                "sector": "Technology",
-            })
+        with patch('src.agents.agent_factory.create_agent') as mock_create:
+            mock_create.return_value = MagicMock()
+            agents = create_all_agents([])
+            assert "data_collector" in agents
 
-            result = await agent.execute({"ticker": "AAPL"})
+    def test_data_collector_prompt_is_detailed(self):
+        """Test that DATA_COLLECTOR_PROMPT has tool instructions and JSON format."""
+        from src.models.prompts import DATA_COLLECTOR_PROMPT
+        assert "get_ticker_info" in DATA_COLLECTOR_PROMPT
+        assert "valid" in DATA_COLLECTOR_PROMPT
+        assert "data_availability" in DATA_COLLECTOR_PROMPT
+        assert len(DATA_COLLECTOR_PROMPT) > 500
 
-            assert result["ticker"] == "AAPL"
-            assert result["valid"] is True
-            assert result["company_name"] == "Apple Inc."
-            assert result["confidence"] > 0.0
 
-    @pytest.mark.asyncio
-    async def test_execute_invalid_ticker(self, mock_openai_client, mock_db_client):
-        """Test validation with invalid ticker."""
-        agent = DataCollectorAgent(mock_openai_client, mock_db_client)
+class TestOrchestratorAsCreateAgent:
+    """Tests for orchestrator as a real create_agent agent."""
 
-        with patch.object(agent, 'yfinance_client') as mock_yf:
-            mock_yf.get_ticker_info = AsyncMock(return_value={
-                "symbol": "XXXXX",
-                "name": None,
-            })
+    def test_orchestrator_in_agent_factory(self):
+        """Test that orchestrator is registered in agent factory."""
+        from src.agents.agent_factory import create_all_agents
 
-            result = await agent.execute({"ticker": "XXXXX"})
+        with patch('src.agents.agent_factory.create_agent') as mock_create:
+            mock_create.return_value = MagicMock()
+            agents = create_all_agents([])
+            assert "orchestrator" in agents
 
-            assert result["ticker"] == "XXXXX"
-            assert result["valid"] is False
-
-    @pytest.mark.asyncio
-    async def test_execute_error(self, mock_openai_client, mock_db_client):
-        """Test validation when MCP client fails."""
-        agent = DataCollectorAgent(mock_openai_client, mock_db_client)
-
-        with patch.object(agent, 'yfinance_client') as mock_yf:
-            mock_yf.get_ticker_info = AsyncMock(side_effect=Exception("Connection failed"))
-
-            result = await agent.execute({"ticker": "AAPL"})
-
-            assert result["valid"] is False
-            assert "error" in result
+    def test_orchestrator_prompt_is_detailed(self):
+        """Test that ORCHESTRATOR_PROMPT has tool instructions and JSON format."""
+        from src.models.prompts import ORCHESTRATOR_PROMPT
+        assert "tickers" in ORCHESTRATOR_PROMPT
+        assert "analysis_type" in ORCHESTRATOR_PROMPT
+        assert "execution_plan" in ORCHESTRATOR_PROMPT
+        assert "any language" in ORCHESTRATOR_PROMPT.lower() or "ANY language" in ORCHESTRATOR_PROMPT
+        assert len(ORCHESTRATOR_PROMPT) > 500
 
 
 class TestMCPClientFactory:
@@ -150,6 +139,8 @@ class TestAgentFactory:
 
             agents = create_all_agents(mock_tools)
 
+            assert "data_collector" in agents
+            assert "orchestrator" in agents
             assert "fundamental_analyst" in agents
             assert "technical_analyst" in agents
             assert "sentiment_analyst" in agents
@@ -157,7 +148,7 @@ class TestAgentFactory:
             assert "risk_manager" in agents
             assert "synthesis_agent" in agents
             assert "feedback_loop" in agents
-            assert len(agents) == 7
+            assert len(agents) == 9
 
     def test_create_all_agents_with_tools(self):
         """Test creating agents with MCP tools."""
@@ -173,7 +164,7 @@ class TestAgentFactory:
             agents = create_all_agents(mock_tools)
 
             # Verify create_agent was called with tools for each agent
-            assert mock_create.call_count == 7
+            assert mock_create.call_count == 9
             for call in mock_create.call_args_list:
                 assert call[0][1] == mock_tools  # second positional arg is tools
 
@@ -212,22 +203,27 @@ class TestPrompts:
             assert len(prompt) > 50
 
     def test_prompts_mention_tools(self):
-        """Test that agent prompts reference MCP tools."""
+        """Test that all autonomous agent prompts reference MCP tools."""
         from src.models.prompts import (
+            DATA_COLLECTOR_PROMPT,
+            ORCHESTRATOR_PROMPT,
             FUNDAMENTAL_ANALYST_PROMPT,
             TECHNICAL_ANALYST_PROMPT,
             SENTIMENT_ANALYST_PROMPT,
             RISK_MANAGER_PROMPT,
         )
 
-        # These autonomous agents should mention tools
-        for prompt in [FUNDAMENTAL_ANALYST_PROMPT, TECHNICAL_ANALYST_PROMPT,
+        # All autonomous agents should mention tools
+        for prompt in [DATA_COLLECTOR_PROMPT, ORCHESTRATOR_PROMPT,
+                       FUNDAMENTAL_ANALYST_PROMPT, TECHNICAL_ANALYST_PROMPT,
                        SENTIMENT_ANALYST_PROMPT, RISK_MANAGER_PROMPT]:
             assert "tool" in prompt.lower() or "Tool" in prompt
 
     def test_prompts_require_json_output(self):
-        """Test that analysis prompts specify JSON output format."""
+        """Test that all agent prompts specify JSON output format."""
         from src.models.prompts import (
+            DATA_COLLECTOR_PROMPT,
+            ORCHESTRATOR_PROMPT,
             FUNDAMENTAL_ANALYST_PROMPT,
             TECHNICAL_ANALYST_PROMPT,
             SENTIMENT_ANALYST_PROMPT,
@@ -236,7 +232,8 @@ class TestPrompts:
             FEEDBACK_LOOP_PROMPT,
         )
 
-        for prompt in [FUNDAMENTAL_ANALYST_PROMPT, TECHNICAL_ANALYST_PROMPT,
+        for prompt in [DATA_COLLECTOR_PROMPT, ORCHESTRATOR_PROMPT,
+                       FUNDAMENTAL_ANALYST_PROMPT, TECHNICAL_ANALYST_PROMPT,
                        SENTIMENT_ANALYST_PROMPT, DEBATE_AGENT_PROMPT,
                        RISK_MANAGER_PROMPT, FEEDBACK_LOOP_PROMPT]:
             assert "JSON" in prompt or "json" in prompt

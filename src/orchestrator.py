@@ -7,14 +7,12 @@ import time
 import uuid
 from typing import Dict, Any, List, TypedDict, Optional
 from langgraph.graph import StateGraph, END
-from openai import AsyncOpenAI
 from config.settings import settings
 from src.utils.database import Database
 from src.utils.logger import setup_logger
 from src.utils.validators import validate_tickers
 from src.mcp.mcp_client_factory import create_mcp_client
 from src.agents.agent_factory import create_all_agents
-from src.agents.data_collector import DataCollectorAgent
 
 logger = setup_logger("orchestrator")
 
@@ -50,14 +48,8 @@ class Orchestrator:
         logger.info("Initializing Stock Analysis Orchestrator")
         logger.info(f"OpenAI Model: {settings.OPENAI_MODEL}")
 
-        # Initialize OpenAI client (still used for ticker extraction)
-        self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
         # Initialize database
         self.db = Database()
-
-        # Data collector for ticker validation (uses existing YahooFinanceMCPClient)
-        self.data_collector = DataCollectorAgent(self.openai_client, self.db)
 
         # These are set during initialize()
         self.mcp_client = None
@@ -215,12 +207,17 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     async def _collect_data_node(self, state: AnalysisState) -> Dict[str, Any]:
-        """Node for data collection / ticker validation."""
-        logger.info(f"[Orchestrator] Validating ticker {state['ticker']}")
+        """Node for data collection / ticker validation -- autonomous agent."""
+        ticker = state["ticker"]
+        logger.info(f"[Orchestrator] Running autonomous data validation for {ticker}")
 
-        result = await self.data_collector.run(
-            {"ticker": state["ticker"], "query": state.get("query", "")},
-            run_id=state["run_id"]
+        result = await self._invoke_agent(
+            "data_collector",
+            f"""Validate the stock ticker: {ticker}
+
+Use your available MCP tools to verify this is a real, tradeable ticker symbol.
+Check that price history, financial data, and news are accessible.
+Return your validation as JSON in the required format."""
         )
 
         return {"collected_data": result}
@@ -475,9 +472,13 @@ Return your QA assessment as JSON in the required format."""
     # Ticker extraction and analysis entry points (unchanged)
     # ------------------------------------------------------------------
 
-    async def _extract_tickers_with_llm(self, query: str) -> tuple[list[str], str]:
+    async def _extract_tickers_with_orchestrator_agent(self, query: str) -> tuple[list[str], str]:
         """
-        Extract ticker symbols from query using LLM.
+        Extract ticker symbols from query using the orchestrator agent (create_agent).
+
+        The orchestrator agent autonomously parses the query (in any language),
+        resolves company names to tickers via MCP tools if needed, and returns
+        a structured execution plan.
 
         Args:
             query: User query in any language
@@ -485,46 +486,26 @@ Return your QA assessment as JSON in the required format."""
         Returns:
             Tuple of (tickers, analysis_type)
         """
-        extraction_prompt = f"""Extract stock ticker symbols from the following query.
-Return ONLY a JSON object with this exact format:
-{{"tickers": ["AAPL", "MSFT"], "analysis_type": "single" or "multiple"}}
-
-Rules:
-- Extract valid US stock ticker symbols (1-5 uppercase letters)
-- If only one ticker, analysis_type is "single"
-- If multiple tickers, analysis_type is "multiple"
-- If no tickers found, return {{"tickers": [], "analysis_type": "none"}}
-- The query may be in any language, extract the ticker regardless
-
-Query: {query}
-
-JSON response:"""
-
         try:
-            response = await self.openai_client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[{"role": "user", "content": extraction_prompt}],
-                temperature=0,
-                max_tokens=100
+            result = await self._invoke_agent(
+                "orchestrator",
+                f"""Parse the following user query and extract stock ticker symbols.
+The query may be in any language.
+
+User query: {query}
+
+Use your MCP tools ONLY if you need to resolve an ambiguous company name to a ticker.
+Return your execution plan as JSON in the required format."""
             )
 
-            result_text = response.choices[0].message.content.strip()
-            # Remove markdown code blocks if present
-            if result_text.startswith("```"):
-                result_text = result_text.split("```")[1]
-                if result_text.startswith("json"):
-                    result_text = result_text[4:]
-                result_text = result_text.strip()
-
-            result = json.loads(result_text)
             tickers = [t.upper() for t in result.get("tickers", [])]
             analysis_type = result.get("analysis_type", "single")
 
-            logger.info(f"LLM extracted tickers: {tickers}, type: {analysis_type}")
+            logger.info(f"Orchestrator agent extracted tickers: {tickers}, type: {analysis_type}")
             return tickers, analysis_type
 
         except Exception as e:
-            logger.error(f"LLM ticker extraction failed: {e}")
+            logger.error(f"Orchestrator agent ticker extraction failed: {e}")
             # Fallback: treat entire query as potential ticker if it looks like one
             query_clean = query.strip().upper()
             if len(query_clean) <= 5 and query_clean.isalpha():
@@ -549,7 +530,7 @@ JSON response:"""
         start_time = time.time()
 
         # Extract tickers using LLM (supports any language)
-        tickers, analysis_type = await self._extract_tickers_with_llm(query)
+        tickers, analysis_type = await self._extract_tickers_with_orchestrator_agent(query)
 
         if not tickers:
             return {
