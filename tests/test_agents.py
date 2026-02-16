@@ -46,28 +46,6 @@ class TestDataCollectorAsCreateAgent:
         assert len(DATA_COLLECTOR_PROMPT) > 500
 
 
-class TestOrchestratorAsCreateAgent:
-    """Tests for orchestrator as a real create_agent agent."""
-
-    def test_orchestrator_in_agent_factory(self):
-        """Test that orchestrator is registered in agent factory."""
-        from src.agents.agent_factory import create_all_agents
-
-        with patch('src.agents.agent_factory.create_agent') as mock_create:
-            mock_create.return_value = MagicMock()
-            agents = create_all_agents([])
-            assert "orchestrator" in agents
-
-    def test_orchestrator_prompt_is_detailed(self):
-        """Test that ORCHESTRATOR_PROMPT has tool instructions and JSON format."""
-        from src.models.prompts import ORCHESTRATOR_PROMPT
-        assert "tickers" in ORCHESTRATOR_PROMPT
-        assert "analysis_type" in ORCHESTRATOR_PROMPT
-        assert "execution_plan" in ORCHESTRATOR_PROMPT
-        assert "any language" in ORCHESTRATOR_PROMPT.lower() or "ANY language" in ORCHESTRATOR_PROMPT
-        assert len(ORCHESTRATOR_PROMPT) > 500
-
-
 class TestMCPClientFactory:
     """Tests for MCP client factory."""
 
@@ -140,7 +118,6 @@ class TestAgentFactory:
             agents = create_all_agents(mock_tools)
 
             assert "data_collector" in agents
-            assert "orchestrator" in agents
             assert "fundamental_analyst" in agents
             assert "technical_analyst" in agents
             assert "sentiment_analyst" in agents
@@ -148,7 +125,7 @@ class TestAgentFactory:
             assert "risk_manager" in agents
             assert "synthesis_agent" in agents
             assert "feedback_loop" in agents
-            assert len(agents) == 9
+            assert len(agents) == 8
 
     def test_create_all_agents_with_tools(self):
         """Test creating agents with MCP tools."""
@@ -164,7 +141,7 @@ class TestAgentFactory:
             agents = create_all_agents(mock_tools)
 
             # Verify create_agent was called with tools for each agent
-            assert mock_create.call_count == 9
+            assert mock_create.call_count == 8
             for call in mock_create.call_args_list:
                 assert call[0][1] == mock_tools  # second positional arg is tools
 
@@ -206,7 +183,6 @@ class TestPrompts:
         """Test that all autonomous agent prompts reference MCP tools."""
         from src.models.prompts import (
             DATA_COLLECTOR_PROMPT,
-            ORCHESTRATOR_PROMPT,
             FUNDAMENTAL_ANALYST_PROMPT,
             TECHNICAL_ANALYST_PROMPT,
             SENTIMENT_ANALYST_PROMPT,
@@ -214,7 +190,7 @@ class TestPrompts:
         )
 
         # All autonomous agents should mention tools
-        for prompt in [DATA_COLLECTOR_PROMPT, ORCHESTRATOR_PROMPT,
+        for prompt in [DATA_COLLECTOR_PROMPT,
                        FUNDAMENTAL_ANALYST_PROMPT, TECHNICAL_ANALYST_PROMPT,
                        SENTIMENT_ANALYST_PROMPT, RISK_MANAGER_PROMPT]:
             assert "tool" in prompt.lower() or "Tool" in prompt
@@ -223,7 +199,6 @@ class TestPrompts:
         """Test that all agent prompts specify JSON output format."""
         from src.models.prompts import (
             DATA_COLLECTOR_PROMPT,
-            ORCHESTRATOR_PROMPT,
             FUNDAMENTAL_ANALYST_PROMPT,
             TECHNICAL_ANALYST_PROMPT,
             SENTIMENT_ANALYST_PROMPT,
@@ -232,7 +207,7 @@ class TestPrompts:
             FEEDBACK_LOOP_PROMPT,
         )
 
-        for prompt in [DATA_COLLECTOR_PROMPT, ORCHESTRATOR_PROMPT,
+        for prompt in [DATA_COLLECTOR_PROMPT,
                        FUNDAMENTAL_ANALYST_PROMPT, TECHNICAL_ANALYST_PROMPT,
                        SENTIMENT_ANALYST_PROMPT, DEBATE_AGENT_PROMPT,
                        RISK_MANAGER_PROMPT, FEEDBACK_LOOP_PROMPT]:
