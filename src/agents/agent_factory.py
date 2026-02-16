@@ -13,7 +13,6 @@ from langchain_core.tools import BaseTool
 from config.settings import settings
 from src.models.prompts import (
     DATA_COLLECTOR_PROMPT,
-    ORCHESTRATOR_PROMPT,
     FUNDAMENTAL_ANALYST_PROMPT,
     TECHNICAL_ANALYST_PROMPT,
     SENTIMENT_ANALYST_PROMPT,
@@ -55,7 +54,6 @@ def create_all_agents(tools: List[BaseTool]) -> Dict[str, Any]:
 
     agent_configs = {
         "data_collector":      DATA_COLLECTOR_PROMPT,
-        "orchestrator":        ORCHESTRATOR_PROMPT,
         "fundamental_analyst": FUNDAMENTAL_ANALYST_PROMPT,
         "technical_analyst":   TECHNICAL_ANALYST_PROMPT,
         "sentiment_analyst":   SENTIMENT_ANALYST_PROMPT,
