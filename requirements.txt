@@ -7,12 +7,13 @@ pydantic-settings>=2.7.0,<3.0.0
 mcp>=1.0.0
 langchain-mcp-adapters>=0.1.0
 
-# AI/ML - Updated to latest 2026 versions
-openai>=1.57.0,<2.0.0
-langgraph>=0.2.45,<0.3.0
-langchain>=0.3.13,<0.4.0
-langchain-core>=0.3.23,<0.4.0
-langchain-openai>=0.2.9,<0.3.0
+# AI/ML
+openai>=1.57.0
+langgraph>=0.2.60
+langgraph-prebuilt>=0.1.0
+langchain>=0.3.13
+langchain-core>=0.3.23
+langchain-openai>=0.2.9
 
 # Data processing - NumPy 2.x series now stable
 pandas>=2.2.3,<3.0.0

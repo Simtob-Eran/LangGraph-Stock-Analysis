@@ -1,5 +1,5 @@
 """
-Agent Factory -- builds autonomous create_agent instances per specialist.
+Agent Factory -- builds autonomous ReAct agent instances per specialist.
 
 Each agent:
   - Has its own expert system prompt
@@ -7,7 +7,7 @@ Each agent:
   - Uses ReAct loop to decide which tools to call autonomously
 """
 from typing import List, Dict, Any
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import BaseTool
 from config.settings import settings
@@ -37,7 +37,7 @@ def build_llm() -> ChatOpenAI:
 
 def create_all_agents(tools: List[BaseTool]) -> Dict[str, Any]:
     """
-    Build all specialist agents using create_agent (LangGraph v1).
+    Build all specialist agents using create_react_agent (langgraph.prebuilt).
 
     All agents share the same tools list -- each agent autonomously
     decides which tools to call based on its system prompt and task.
@@ -64,8 +64,8 @@ def create_all_agents(tools: List[BaseTool]) -> Dict[str, Any]:
     }
 
     agents = {}
-    for name, prompt in agent_configs.items():
-        agents[name] = create_agent(llm, tools, system_prompt=prompt)
+    for name, system_prompt in agent_configs.items():
+        agents[name] = create_react_agent(llm, tools, prompt=system_prompt)
         logger.info(f"Created agent: {name} (tools available: {len(tools)})")
 
     return agents

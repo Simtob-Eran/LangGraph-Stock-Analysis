@@ -32,7 +32,7 @@ class TestDataCollectorAsCreateAgent:
         """Test that data_collector is registered in agent factory."""
         from src.agents.agent_factory import create_all_agents
 
-        with patch('src.agents.agent_factory.create_agent') as mock_create:
+        with patch('src.agents.agent_factory.create_react_agent') as mock_create:
             mock_create.return_value = MagicMock()
             agents = create_all_agents([])
             assert "data_collector" in agents
@@ -112,7 +112,7 @@ class TestAgentFactory:
 
         mock_tools = []
 
-        with patch('src.agents.agent_factory.create_agent') as mock_create:
+        with patch('src.agents.agent_factory.create_react_agent') as mock_create:
             mock_create.return_value = MagicMock()
 
             agents = create_all_agents(mock_tools)
@@ -135,7 +135,7 @@ class TestAgentFactory:
         mock_tool.name = "get_ticker_info"
         mock_tools = [mock_tool]
 
-        with patch('src.agents.agent_factory.create_agent') as mock_create:
+        with patch('src.agents.agent_factory.create_react_agent') as mock_create:
             mock_create.return_value = MagicMock()
 
             agents = create_all_agents(mock_tools)
