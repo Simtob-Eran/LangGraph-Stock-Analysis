@@ -41,8 +41,11 @@ class Orchestrator:
 
     Coordinates autonomous agents using LangGraph for workflow management.
     Each specialist agent independently fetches data via MCP tools using
-    create_agent's ReAct loop.
+    create_react_agent's ReAct loop.
     """
+
+    # Limit concurrent agent-to-MCP calls to avoid overwhelming the server
+    MAX_CONCURRENT_AGENTS = 2
 
     def __init__(self):
         """Initialize orchestrator (lightweight -- call initialize() before analyze)."""
@@ -54,6 +57,9 @@ class Orchestrator:
 
         # Initialize database
         self.db = Database()
+
+        # Semaphore limits concurrent MCP-hitting agents to avoid EOF errors
+        self._agent_semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_AGENTS)
 
         # These are set during initialize()
         self.mcp_client = None
@@ -149,30 +155,49 @@ class Orchestrator:
     # Agent invocation helpers
     # ------------------------------------------------------------------
 
-    async def _invoke_agent(self, agent_name: str, user_message: str) -> dict:
-        """Invoke a create_agent agent and parse its JSON output."""
+    async def _invoke_agent(self, agent_name: str, user_message: str, retries: int = 2) -> dict:
+        """Invoke a create_react_agent agent and parse its JSON output.
+
+        Uses a semaphore to limit concurrent MCP connections (prevents EOF errors)
+        and retries on transient connection failures.
+        """
         agent = self.agents[agent_name]
+        last_error = None
 
-        try:
-            result = await agent.ainvoke({
-                "messages": [{"role": "user", "content": user_message}]
-            })
+        for attempt in range(1 + retries):
+            try:
+                async with self._agent_semaphore:
+                    result = await agent.ainvoke({
+                        "messages": [{"role": "user", "content": user_message}]
+                    })
 
-            # Final agent message is in result["messages"][-1]
-            final_content = result["messages"][-1].content
+                # Final agent message is in result["messages"][-1]
+                final_content = result["messages"][-1].content
 
-            # Try to parse JSON from the response
-            return self._extract_json(final_content)
+                # Try to parse JSON from the response
+                return self._extract_json(final_content)
 
-        except Exception as e:
-            logger.error(f"Agent {agent_name} failed: {e}")
-            return {
-                "error": str(e),
-                "score": 5.0,
-                "confidence": 0.0,
-                "recommendation": "hold",
-                "reasoning": f"Agent failed: {e}"
-            }
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    wait = 2 ** (attempt + 1)  # 2s, 4s
+                    logger.warning(
+                        f"Agent {agent_name} attempt {attempt + 1} failed: {e}. "
+                        f"Retrying in {wait}s..."
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error(f"Agent {agent_name} failed after {1 + retries} attempts: {e}")
+
+        return {
+            "error": str(last_error),
+            "score": 5.0,
+            "sentiment_score": 0.0,
+            "risk_score": 5.0,
+            "confidence": 0.0,
+            "recommendation": "hold",
+            "reasoning": f"Agent failed after {1 + retries} attempts: {last_error}"
+        }
 
     def _extract_json(self, content: str) -> dict:
         """Extract JSON dict from agent response text."""
@@ -325,9 +350,11 @@ Return your assessment as JSON in the required format."""
         debate = state.get("debate", {})
         risk = state.get("risk", {})
 
-        synthesis_result = await self._invoke_agent(
-            "synthesis_agent",
-            f"""Create the final comprehensive analysis report for: {ticker}
+        # The synthesis agent prompt asks for markdown, but create_react_agent
+        # will produce a final message (possibly with tool calls mixed in).
+        # We need the raw text, not JSON-parsed output, for the markdown report.
+        agent = self.agents["synthesis_agent"]
+        synthesis_user_msg = f"""Create the final comprehensive analysis report for: {ticker}
 
 FUNDAMENTAL ANALYSIS:
 {json.dumps(fundamental, indent=2, default=str)}
@@ -344,16 +371,46 @@ DEBATE ANALYSIS:
 RISK ASSESSMENT:
 {json.dumps(risk, indent=2, default=str)}
 
-Produce the full markdown report in the required format.
-Also provide a JSON summary with overall_score, recommendation, and key metrics."""
-        )
+IMPORTANT: Produce the FULL markdown report as described in your instructions.
+The report should start with "# Stock Analysis Report:" and end with the DISCLAIMER.
+Output the markdown report directly - do NOT wrap it in JSON or code blocks."""
 
-        # The synthesis agent returns markdown -- wrap it for compatibility
-        # with the existing main.py report extraction logic
-        markdown_report = synthesis_result.get("reasoning", "")
-        if not markdown_report or markdown_report == synthesis_result.get("recommendation", ""):
-            # Agent likely returned the report as the full response text
-            markdown_report = synthesis_result.get("markdown_report", str(synthesis_result))
+        try:
+            async with self._agent_semaphore:
+                result = await agent.ainvoke({
+                    "messages": [{"role": "user", "content": synthesis_user_msg}]
+                })
+            raw_content = result["messages"][-1].content
+        except Exception as e:
+            logger.error(f"Synthesis agent failed: {e}")
+            raw_content = ""
+
+        # Try to extract markdown report from the response
+        # The agent may return pure markdown, or wrap it in JSON, or mix both
+        markdown_report = ""
+
+        # Check if it starts with markdown heading
+        if raw_content.strip().startswith("#"):
+            markdown_report = raw_content.strip()
+        else:
+            # Try to find markdown within the response (between ```markdown blocks)
+            md_match = re.search(r'```(?:markdown)?\s*\n?(#.*?)```', raw_content, re.DOTALL)
+            if md_match:
+                markdown_report = md_match.group(1).strip()
+            else:
+                # Try to parse as JSON and extract markdown_report field
+                try:
+                    parsed = json.loads(raw_content)
+                    markdown_report = parsed.get("markdown_report", "")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+                if not markdown_report:
+                    # Last resort: use the raw content as-is
+                    markdown_report = raw_content.strip()
+
+        # Also parse any JSON summary from the response for metadata
+        synthesis_result = self._extract_json(raw_content) if raw_content else {}
 
         # Calculate overall score from sub-analyses for backward compatibility
         overall_score = self._calculate_overall_score(fundamental, technical, sentiment, risk)
@@ -446,21 +503,40 @@ Return your QA assessment as JSON in the required format."""
         sentiment: Dict[str, Any],
         risk: Dict[str, Any]
     ) -> float:
-        """Calculate weighted overall score from sub-analyses."""
+        """Calculate weighted overall score from sub-analyses.
+
+        Weights:  fundamental 35%, technical 25%, sentiment 20%, risk 20%
+        All sub-scores normalized to 0-10 scale before weighting.
+        """
         fund_score = float(fundamental.get("score", 5.0))
 
-        # Technical: use score directly if available, else infer from trend
+        # Technical: use score directly if available
         tech_score = float(technical.get("score", 5.0))
 
         # Sentiment: normalize from [-1, +1] to [0, 10]
-        sent_raw = sentiment.get("sentiment_score", 0.0)
-        try:
-            sentiment_score = (float(sent_raw) + 1) * 5
-        except (TypeError, ValueError):
-            sentiment_score = 5.0
+        # The prompt asks for "sentiment_score" in range -1.0 to +1.0,
+        # but on failure _invoke_agent returns {"score": 5.0, "sentiment_score": 0.0}
+        sent_raw = sentiment.get("sentiment_score", None)
+        if sent_raw is None:
+            # Fallback: agent may have returned "score" on 0-10 scale
+            sent_raw = sentiment.get("score", 5.0)
+            try:
+                sentiment_score = float(sent_raw)
+            except (TypeError, ValueError):
+                sentiment_score = 5.0
+        else:
+            try:
+                val = float(sent_raw)
+                # Detect if the value is on -1..+1 scale vs 0..10 scale
+                if -1.0 <= val <= 1.0:
+                    sentiment_score = (val + 1) * 5  # Map -1..+1 -> 0..10
+                else:
+                    sentiment_score = val  # Already on 0-10 scale
+            except (TypeError, ValueError):
+                sentiment_score = 5.0
 
-        # Risk: invert (lower risk = higher contribution)
-        risk_raw = float(risk.get("risk_score", 5.0))
+        # Risk: invert (lower risk = higher contribution to overall score)
+        risk_raw = float(risk.get("risk_score", risk.get("score", 5.0)))
         risk_score = 10 - risk_raw
 
         overall = (
@@ -468,6 +544,12 @@ Return your QA assessment as JSON in the required format."""
             tech_score * 0.25 +
             sentiment_score * 0.20 +
             risk_score * 0.20
+        )
+
+        logger.info(
+            f"Score breakdown: fundamental={fund_score:.1f}, technical={tech_score:.1f}, "
+            f"sentiment={sentiment_score:.1f} (raw={sent_raw}), risk_inverted={risk_score:.1f} "
+            f"-> overall={overall:.1f}"
         )
 
         return max(0.0, min(10.0, round(overall, 1)))
